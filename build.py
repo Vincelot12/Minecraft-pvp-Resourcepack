@@ -5,6 +5,7 @@ Vanilla assets are pulled from Mojang's official client jar (cached in .cache/)
 so every texture in pack/ is reproducible from source instead of hand-edited.
 """
 
+import colorsys
 import json
 import math
 import os
@@ -661,14 +662,13 @@ def no_vignette():
 # Vanilla already swaps the bow and shield model while an item is in use via
 # the item-model `range_dispatch` on `minecraft:use_duration` - the same
 # mechanism used by packs like "PvP For Cuties" for eating animations. We
-# reuse that mechanism but generate our own stage textures (a growing bite
-# notch for solid food, a draining top-down erosion for liquids) instead of
-# hand-drawn art, so every food/drink is covered without per-item painting.
+# reuse that mechanism but generate our own stage textures from the vanilla
+# artwork: per-item bites that leave bones, cores and rinds behind for solid
+# food, a draining top-down erosion for liquids.
 # --------------------------------------------------------------------------
 
 EAT_SCALE = 0.03
 EAT_THRESHOLDS = [0.3, 0.55, 0.8]  # matches vanilla's ~32-tick eat/drink duration
-BITE_FRACTIONS = [0.16, 0.33, 0.52]   # solid food: share of the sprite eaten away
 DRAIN_FRACTIONS = [0.22, 0.45, 0.7]   # liquids: top-down erosion
 
 FOOD_SOLID = [
@@ -688,154 +688,304 @@ FOOD_DRAIN = [
 ]
 
 
-# The cross-section revealed once a food is bitten into. Vanilla only draws
-# each item's outside, so the inside has to be stated per item - it is what
-# makes a bite read as a bite instead of a hole punched through the sprite.
-FOOD_FLESH = {
-    "apple": (243, 233, 208),             # white fruit flesh
-    "golden_apple": (250, 240, 205),
-    "enchanted_golden_apple": (250, 240, 205),
-    "baked_potato": (235, 205, 135),      # fluffy pale inside
-    "potato": (226, 202, 148),
-    "poisonous_potato": (206, 208, 138),  # sickly green-tinged
-    "beef": (168, 58, 58),                # raw muscle, darker than the surface
-    "cooked_beef": (146, 92, 58),
-    "chicken": (240, 194, 184),
-    "cooked_chicken": (233, 204, 158),
-    "mutton": (170, 62, 58),
-    "cooked_mutton": (154, 98, 64),
-    "porkchop": (242, 172, 164),
-    "cooked_porkchop": (219, 168, 112),
-    "rabbit": (238, 190, 180),
-    "cooked_rabbit": (163, 110, 72),
-    "rotten_flesh": (112, 102, 74),       # murky, not appetising
-    "beetroot": (144, 30, 62),            # deep magenta root
-    "bread": (228, 199, 148),             # pale crumb under the crust
-    "cookie": (188, 137, 86),
-    "carrot": (243, 156, 62),             # lighter than the skin
-    "golden_carrot": (250, 205, 96),
-    "chorus_fruit": (206, 178, 214),
-    "cod": (234, 220, 198),               # white fish flakes
-    "cooked_cod": (238, 228, 208),
-    "salmon": (238, 134, 106),            # pink fillet
-    "cooked_salmon": (240, 158, 108),
-    "tropical_fish": (242, 224, 212),
-    "pufferfish": (238, 228, 178),
-    "dried_kelp": (62, 88, 52),
-    "glow_berries": (255, 202, 96),
-    "sweet_berries": (202, 48, 72),
-    "melon_slice": (232, 74, 82),
-    "pumpkin_pie": (236, 172, 78),        # custard filling
-    "spider_eye": (116, 36, 48),
+# Solid food is eaten the way it would be in real life: the flesh goes, but
+# what nobody eats stays behind - an apple's stem and core, a melon's rind,
+# a fish's head, tail and skeleton, the bone out of a drumstick. Vanilla only
+# draws each item's outside, so every food states that itself:
+#   flesh   - colour of the cut surface, so a bite isn't a hole in the sprite
+#   anchors - (x, y, delay) points the bites come from; delay holds one side
+#             back, so an apple goes round one flank before the other
+#   stages  - share of the edible pixels gone at each animation stage
+#   keep    - pixels that are never eaten (rind, stem, leaves, head, fins)
+#   core    - (pixels, colour) uncovered once the flesh around them is gone
+# Coordinates refer to the item's 16x16 vanilla sprite.
+
+BONE = (236, 230, 212)
+APPLE_SEED = (86, 54, 30)
+TOOTH = 0.9  # ripple on the bite front, in pixels, so it leaves tooth marks
+
+
+def seg(a, b):
+    """Pixels on the straight line from a to b, both ends included."""
+    (x0, y0), (x1, y1) = a, b
+    steps = max(abs(x1 - x0), abs(y1 - y0))
+    if not steps:
+        return [a]
+    return [(round(x0 + (x1 - x0) * i / steps), round(y0 + (y1 - y0) * i / steps))
+            for i in range(steps + 1)]
+
+
+def hue_class(r, g, b):
+    """Coarse colour name of a pixel, to pick rind, leaves or fins out of a sprite."""
+    h, s, v = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
+    h *= 360
+    if v < 0.22:
+        return "dark"
+    if s < 0.18:
+        return "grey"
+    if 70 <= h < 170:
+        return "green"
+    if 170 <= h < 250:
+        return "cyan"
+    if 250 <= h < 340:
+        return "purple"
+    if h < 15 or h >= 340:
+        return "red"
+    if h < 45:
+        return "orange" if v > 0.6 else "brown"
+    return "yellow"
+
+
+def plain_bite(flesh):
+    return {"flesh": flesh, "anchors": [(16, -1, 0)], "stages": (0.2, 0.42, 0.68)}
+
+
+# stem, plus the skin left at the top and bottom of a finished core
+APPLE_KEEP = {(9, 1), (8, 2), (9, 2), (8, 3),
+              (6, 4), (7, 4), (8, 4), (9, 4), (7, 5), (8, 5),
+              (6, 13), (7, 13), (8, 13), (9, 13), (6, 14), (7, 14), (8, 14)}
+
+
+def apple(flesh):
+    return {
+        "flesh": flesh,
+        "anchors": [(14, 8, 0), (0, 9, 2.5)],  # right flank first, then the left
+        "stages": (0.28, 0.6, 0.93),
+        "keep": lambda x, y, rgb: (x, y) in APPLE_KEEP,
+        "core": [(seg((7, 6), (7, 12)) + seg((8, 6), (8, 12)), flesh),
+                 ([(7, 8), (8, 10)], APPLE_SEED)],
+    }
+
+
+# cod, cooked cod and tropical fish share one outline - head bottom-left,
+# tail fin top-right - so the spine runs corner to corner with ribs off it
+COD_BONES = seg((5, 10), (11, 4)) + [(5, 8), (7, 10), (7, 6), (9, 8), (9, 4), (11, 6)]
+
+
+def cod_like(flesh, tail):
+    return {
+        "flesh": flesh,
+        "anchors": [(3, 4, 0), (12, 11, 2)],  # strip the back, then the belly
+        "stages": (0.3, 0.62, 0.95),
+        "keep": lambda x, y, rgb: ((x <= 4 and y >= 10) or y <= 3 or y == 14
+                                   or (x, y) in tail),
+        "core": [(COD_BONES, BONE)],
+    }
+
+
+# the salmon's green head reaches further in than the cod's, so its spine
+# starts later
+SALMON_BONES = seg((7, 9), (12, 4)) + [(7, 7), (9, 9), (8, 6), (10, 8), (9, 5)]
+SALMON_FINS = {(3, 11), (5, 12), (5, 13), (6, 13), (4, 14), (5, 14), (13, 4), (14, 4)}
+
+
+def salmon_like(flesh):
+    return {
+        "flesh": flesh,
+        "anchors": [(4, 3, 0), (13, 11, 2)],
+        "stages": (0.3, 0.62, 0.95),
+        "keep": lambda x, y, rgb: (hue_class(*rgb) == "green" or y <= 3
+                                   or (x, y) in SALMON_FINS),
+        "core": [(SALMON_BONES, BONE)],
+    }
+
+
+# a drumstick bone with a knuckle at each end
+DRUMSTICK = seg((5, 11), (11, 5)) + [(4, 11), (4, 12), (5, 12), (11, 4), (12, 4), (12, 5)]
+
+
+def drumstick(flesh):
+    return {
+        "flesh": flesh,
+        "anchors": [(2, 2, 0), (14, 13, 2)],
+        "stages": (0.3, 0.62, 0.93),
+        "core": [(DRUMSTICK, BONE)],
+    }
+
+
+# spine along the back, three pairs of ribs, a front and a hind leg
+RABBIT_BONES = (seg((3, 6), (13, 6))
+                + [(6, 5), (6, 7), (8, 5), (8, 7), (10, 5), (10, 7)]
+                + seg((11, 7), (13, 12)) + seg((4, 7), (5, 11)))
+
+
+def rabbit(flesh):
+    return {
+        "flesh": flesh,
+        "anchors": [(8, 0, 0), (7, 14, 1.5)],
+        "stages": (0.3, 0.62, 0.93),
+        "core": [(RABBIT_BONES, BONE)],
+    }
+
+
+# the leg bone runs up into the narrow shank, knuckled at both ends
+LEG_BONE = seg((11, 2), (5, 12)) + [(11, 1), (12, 1), (12, 2), (4, 12), (4, 13), (5, 13)]
+
+
+def mutton(flesh):
+    return {
+        "flesh": flesh,
+        # both sides of the bone, and up from the broad end so it isn't left hanging
+        "anchors": [(2, 4, 0), (15, 11, 1), (6, 17, 1.5)],
+        "stages": (0.3, 0.62, 0.92),
+        "core": [(LEG_BONE, BONE)],
+    }
+
+
+def porkchop(flesh, bone):
+    return {
+        "flesh": flesh,
+        "anchors": [(1, 14, 0), (4, 1, 2.5)],  # the meaty end first, the rib bone last
+        "stages": (0.3, 0.62, 0.9),
+        "core": [(bone, BONE)],
+    }
+
+
+# the leaf stalk on top
+BEETROOT_KEEP = {(9, 2), (10, 2), (10, 3), (11, 3), (12, 3), (10, 4), (11, 4)}
+
+
+def glow_berry_vine(x, y, rgb):
+    kind = hue_class(*rgb)
+    return (kind == "green"
+            or (kind == "yellow" and x >= 10)  # lit leaf edges, not berry highlights
+            or (kind == "brown" and y <= 11 and 5 <= x <= 9))  # the stem
+
+
+FOOD_SPEC = {
+    "apple": apple((243, 233, 208)),
+    "golden_apple": apple((250, 240, 205)),
+    "enchanted_golden_apple": apple((250, 240, 205)),
+    "melon_slice": {
+        "flesh": (232, 74, 82),
+        # far off the cut face, so the bites advance on the rind in even rows
+        "anchors": [(-4, -4, 0)],
+        "stages": (0.3, 0.62, 0.96),
+        "keep": lambda x, y, rgb: hue_class(*rgb) != "red",
+    },
+    "cod": cod_like((234, 220, 198), {(13, 4), (14, 4), (11, 5), (12, 5), (13, 5), (14, 5)}),
+    "cooked_cod": cod_like((238, 228, 208), {(14, 4), (13, 5), (14, 5)}),
+    "tropical_fish": cod_like((242, 224, 212), {(13, 4), (14, 4), (12, 5)}),
+    "salmon": salmon_like((238, 134, 106)),
+    "cooked_salmon": salmon_like((240, 158, 108)),
+    "pufferfish": {
+        "flesh": (238, 228, 178),
+        "anchors": [(7, 0, 0), (7, 16, 1.5)],
+        "stages": (0.3, 0.62, 0.93),
+        # only the tail fin on the left - the top fin would be left floating
+        "keep": lambda x, y, rgb: x <= 3 and hue_class(*rgb) == "cyan",
+        "core": [(seg((3, 9), (12, 9))
+                  + [(6, 8), (6, 10), (8, 8), (8, 10), (10, 8), (10, 10)], BONE)],
+    },
+    "chicken": drumstick((240, 194, 184)),
+    "cooked_chicken": drumstick((233, 204, 158)),
+    "rabbit": rabbit((238, 190, 180)),
+    "cooked_rabbit": rabbit((163, 110, 72)),
+    "mutton": mutton((170, 62, 58)),
+    "cooked_mutton": mutton((154, 98, 64)),
+    "porkchop": porkchop((242, 172, 164),
+                         seg((10, 3), (13, 8)) + [(10, 2), (9, 3), (14, 8), (13, 9)]),
+    "cooked_porkchop": porkchop((219, 168, 112),
+                                seg((10, 4), (13, 9)) + [(10, 3), (9, 4), (13, 8), (12, 9)]),
+    "carrot": {
+        "flesh": (243, 156, 62),
+        "anchors": [(1, 15, 0)],  # from the root tip up to the greens
+        "stages": (0.28, 0.58, 0.88),
+        "keep": lambda x, y, rgb: hue_class(*rgb) == "green",
+    },
+    "golden_carrot": {
+        "flesh": (250, 205, 96),
+        "anchors": [(1, 15, 0)],
+        "stages": (0.28, 0.58, 0.88),
+        "keep": lambda x, y, rgb: y <= 4 or (y <= 9 and hue_class(*rgb) in ("brown", "dark")),
+    },
+    "beetroot": {
+        "flesh": (144, 30, 62),
+        "anchors": [(14, 9, 0), (2, 15, 1.5)],  # the bulb, then the root tail
+        "stages": (0.28, 0.6, 0.9),
+        "keep": lambda x, y, rgb: (x, y) in BEETROOT_KEEP,
+    },
+    "glow_berries": {
+        "flesh": (255, 202, 96),
+        "anchors": [(0, 12, 0), (11, 15, 1)],
+        "stages": (0.3, 0.62, 0.95),
+        "keep": glow_berry_vine,
+    },
+    "sweet_berries": {
+        "flesh": (202, 48, 72),
+        "anchors": [(7, 1, 0), (15, 5, 0.5), (7, 14, 1), (0, 12, 1.5)],  # one per berry
+        "stages": (0.3, 0.62, 0.95),
+        "keep": lambda x, y, rgb: hue_class(*rgb) in ("green", "dark"),
+    },
+    "baked_potato": plain_bite((235, 205, 135)),
+    "potato": plain_bite((226, 202, 148)),
+    "poisonous_potato": plain_bite((206, 208, 138)),
+    "beef": plain_bite((168, 58, 58)),
+    "cooked_beef": plain_bite((146, 92, 58)),
+    "rotten_flesh": plain_bite((112, 102, 74)),
+    "bread": plain_bite((228, 199, 148)),
+    "cookie": plain_bite((188, 137, 86)),
+    # bitten from below, so the pale sprout stays attached to what's left
+    "chorus_fruit": {**plain_bite((206, 178, 214)), "anchors": [(16, 16, 0)]},
+    "dried_kelp": plain_bite((62, 88, 52)),
+    "pumpkin_pie": plain_bite((236, 172, 78)),
+    "spider_eye": plain_bite((116, 36, 48)),
 }
-DEFAULT_FLESH = (226, 206, 176)
-
-# Where each item gets bitten, in normalised bounding-box coordinates -
-# (1, 0) is the top-right corner, (0, 1) the bottom-left. The default corner
-# is wrong wherever the item's artwork puts something inedible there: a
-# carrot's leaves, a fish's head, an apple's stem.
-BITE_ANCHOR = {
-    "apple": (1.0, 0.35),          # right flank, clear of the stem
-    "golden_apple": (1.0, 0.35),
-    "enchanted_golden_apple": (1.0, 0.35),
-    "beetroot": (1.0, 0.75),       # the bulb, not the leafy top
-    "carrot": (0.0, 1.0),          # root tip; the greens are top-right
-    "golden_carrot": (0.0, 1.0),
-    "glow_berries": (0.0, 1.0),    # the berries hang bottom-left
-    "cod": (1.0, 0.5),             # tail end, the head is on the left
-    "cooked_cod": (1.0, 0.5),
-}
-DEFAULT_ANCHOR = (1.0, 0.0)
-
-# Items whose sprite is mostly inedible greenery - a carrot's leaves, the
-# vine a berry hangs off. Eating a flat share of *all* their pixels would
-# chew through the edible part far too fast, so scale their bite down.
-BITE_SCALE = {
-    "carrot": 0.65,
-    "golden_carrot": 0.65,
-    "glow_berries": 0.7,
-    "sweet_berries": 0.8,
-}
 
 
-def bite_erode(img, eaten, flesh=DEFAULT_FLESH, anchor=DEFAULT_ANCHOR):
-    """Bite away `eaten` (0-1) of the item's pixels, lining the cut with flesh.
+def eat_stage(img, eaten, spec):
+    """Eat `eaten` (0-1) of an item's edible pixels as its `spec` describes.
 
-    Two overlapping lobes (a big one plus a smaller one offset along the
-    edge) leave the wavy tooth-marked edge a single circle can't, and every
-    surviving pixel next to the cut is repainted in the item's flesh colour
-    so the bite shows a cross-section rather than a see-through hole.
-
-    The lobe radius is solved for rather than guessed from the bounding box:
-    a corner bite on a long thin fish and a side bite on a round apple
-    remove wildly different amounts for the same radius, so instead we
-    binary-search the radius that eats the requested share of the sprite.
+    Edible pixels go in order of distance from the nearest bite anchor, with
+    a small angular ripple so the front leaves tooth marks rather than a
+    clean arc. `keep` pixels are never touched. `core` pixels aren't removed
+    either, but take their own colour once the front reaches or bares them.
+    Edible pixels left beside a gap get the flesh colour, so the cut shows a
+    cross-section instead of a hole through to the background.
     """
-    bbox = img.getbbox()
-    if not bbox:
-        return img
-    x0, y0, x1, y1 = bbox
-    w, h = x1 - x0, y1 - y0
-    ax = x0 + w * anchor[0]
-    ay = y0 + h * anchor[1]
+    src = img.load()
+    solid = {(x, y) for y in range(img.height) for x in range(img.width) if src[x, y][3]}
+    core = {}
+    for pixels, colour in spec.get("core", ()):
+        for p in pixels:
+            if p in solid:
+                core[p] = colour
+    keep_fn = spec.get("keep")
+    keep = {p for p in solid if p not in core and keep_fn and keep_fn(*p, src[p][:3])}
+    edible = [p for p in solid if p not in core and p not in keep]
 
-    px_in = img.load()
-    solid = [(x, y)
-             for y in range(img.height)
-             for x in range(img.width)
-             if px_in[x, y][3]]
-    if not solid:
-        return img
+    def priority(p):
+        return min(
+            math.hypot(p[0] - ax, p[1] - ay)
+            - TOOTH * math.sin(6 * math.atan2(p[1] - ay, p[0] - ax))
+            + delay
+            for ax, ay, delay in spec["anchors"]
+        )
 
-    # offset the second lobe perpendicular to the centre->anchor direction,
-    # i.e. along the item's edge, so the two bites sit side by side
-    mx, my = x0 + w / 2, y0 + h / 2
-    dx, dy = ax - mx, ay - my
-    length = (dx * dx + dy * dy) ** 0.5 or 1
-    perp_x, perp_y = -dy / length, dx / length
+    edible.sort(key=lambda p: (priority(p), p))
+    n = round(len(edible) * eaten)
+    gone = set(edible[:n])
+    reach = priority(edible[n - 1]) if n else float("-inf")
 
-    def bitten(radius):
-        lobes = [
-            (ax, ay, radius),
-            (ax + perp_x * radius * 0.8, ay + perp_y * radius * 0.8, radius * 0.62),
-        ]
-        return {
-            (x, y) for x, y in solid
-            if any((x - lx) ** 2 + (y - ly) ** 2 <= lr ** 2 for lx, ly, lr in lobes)
-        }
-
-    target = len(solid) * eaten
-    lo, hi = 0.0, (w * w + h * h) ** 0.5
-    for _ in range(24):
-        mid = (lo + hi) / 2
-        if len(bitten(mid)) < target:
-            lo = mid
-        else:
-            hi = mid
-    removed = bitten((lo + hi) / 2)
+    def gaps_around(p):
+        return sum((p[0] + ox, p[1] + oy) in gone for ox in (-1, 0, 1) for oy in (-1, 0, 1))
 
     out = img.copy()
     px = out.load()
-    for x, y in removed:
-        px[x, y] = (0, 0, 0, 0)
+    for p in gone:
+        px[p] = (0, 0, 0, 0)
+    for p, colour in core.items():
+        if priority(p) <= reach or gaps_around(p):
+            px[p] = (*colour, 255)
 
-    left = [p for p in solid if p not in removed]
-
-    def rim(min_touching):
-        return [
-            (x, y) for x, y in left
-            if sum((x + ox, y + oy) in removed
-                   for ox in (-1, 0, 1) for oy in (-1, 0, 1)) >= min_touching
-        ]
-
-    # on a thin sprite (a fish, a carrot) a 1px rim off every adjacent pixel
-    # swallows the whole remainder and the item turns into a pale blob, so
-    # tighten the rim until it stays a cut edge rather than a repaint
-    edge = rim(1)
-    if left and len(edge) > 0.4 * len(left):
-        edge = rim(3)
-    for x, y in edge:
-        px[x, y] = (*flesh, 255)
+    # on a thin sprite a rim off every pixel touching the cut swallows the
+    # whole remainder, so tighten it until it stays an edge, not a repaint
+    left = [p for p in edible if p not in gone]
+    rim = [p for p in left if gaps_around(p)]
+    if left and len(rim) > 0.4 * len(left):
+        rim = [p for p in left if gaps_around(p) >= 3]
+    for p in rim:
+        px[p] = (*spec["flesh"], 255)
     return out
 
 
@@ -928,12 +1078,10 @@ def eating_animation_solid():
     for name in FOOD_SOLID:
         tex = van(f"textures/item/{FOOD_TEXTURE_OVERRIDE.get(name, name)}.png")
         stage_models = []
-        flesh = FOOD_FLESH.get(name, DEFAULT_FLESH)
-        anchor = BITE_ANCHOR.get(name, DEFAULT_ANCHOR)
-        scale = BITE_SCALE.get(name, 1.0)
-        for i, frac in enumerate(BITE_FRACTIONS):
+        spec = FOOD_SPEC[name]
+        for i, eaten in enumerate(spec["stages"]):
             write_png(PVP / f"textures/item/food/{name}/{name}{i}.png",
-                      bite_erode(tex, frac * scale, flesh, anchor))
+                      eat_stage(tex, eaten, spec))
             model_id = f"pvp:item/food/{name}/{name}{i}"
             write_json(PVP / f"models/item/food/{name}/{name}{i}.json", {
                 "parent": "minecraft:item/generated",
