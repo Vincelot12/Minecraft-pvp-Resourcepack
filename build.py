@@ -214,12 +214,21 @@ def outlined_cobweb():
 
 # ores whose mineral speckles give the frame its colour
 ORES = [
-    "coal_ore", "copper_ore", "diamond_ore", "emerald_ore", "gold_ore",
+    "copper_ore", "diamond_ore", "emerald_ore", "gold_ore",
     "iron_ore", "lapis_ore", "redstone_ore", "nether_gold_ore",
-    "nether_quartz_ore", "deepslate_coal_ore", "deepslate_copper_ore",
+    "nether_quartz_ore", "deepslate_copper_ore",
     "deepslate_diamond_ore", "deepslate_emerald_ore", "deepslate_gold_ore",
     "deepslate_iron_ore", "deepslate_lapis_ore", "deepslate_redstone_ore",
 ]
+
+# coal's speckles are almost neutral grey (saturation ~12/255), so the
+# "most saturated pixel" the auto-detection picks is just noise - it comes
+# out an arbitrary khaki/olive that has nothing to do with coal. Give both
+# variants a fixed colour instead, one per background it needs to pop from.
+FIXED_ORE_COLORS = {
+    "coal_ore": (45, 45, 45, 255),               # near-black against light stone
+    "deepslate_coal_ore": (195, 195, 195, 255),  # light grey against dark deepslate
+}
 
 # ancient debris has no distinct mineral fleck to sample a colour from - its
 # most-saturated pixel is just its own dark rock, so it gets a fixed warm
@@ -266,6 +275,10 @@ def bordered_ores():
         src = van(rel)
         write_png(MC / rel,
                   border_frame(src, ore_colour(src), alpha=0.85, textured=True))
+    for name, color in FIXED_ORE_COLORS.items():
+        rel = f"textures/block/{name}.png"
+        src = van(rel)
+        write_png(MC / rel, border_frame(src, color, alpha=0.85, textured=True))
     for name in DEBRIS_TEXTURES:
         rel = f"textures/block/{name}.png"
         src = van(rel)
