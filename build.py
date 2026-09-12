@@ -181,9 +181,34 @@ def border_frame(img, color, inset=0, alpha=1.0, textured=False):
 
 
 def outlined_cobweb():
-    """Frame the whole cobweb block so traps read as a solid box from any angle."""
-    write_png(MC / "textures/block/cobweb.png",
-              border_frame(van("textures/block/cobweb.png"), COBWEB_BORDER))
+    """Cage the cobweb in a wire box so traps read as a solid box from any angle.
+
+    Vanilla's cobweb model is just the 2 diagonal cross planes. A border
+    baked onto those only outlines an X, which disappears when viewed
+    from certain angles. Add 6 more quads - one per cube face - using a
+    transparent texture with just a 1px frame, so the outline forms a
+    full box around the web from any viewing angle.
+    """
+    copy_vanilla("textures/block/cobweb.png")
+
+    cage = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+    write_png(PVP / "textures/block/cobweb_cage.png",
+              border_frame(cage, COBWEB_BORDER))
+
+    cross = json.loads((VANILLA / "models/block/cross.json").read_text())
+    cage_faces = {face: {"uv": [0, 0, 16, 16], "texture": "#cage"}
+                  for face in ("north", "south", "east", "west", "up", "down")}
+    write_json(MC / "models/block/cobweb.json", {
+        "ambientocclusion": False,
+        "textures": {
+            "particle": "minecraft:block/cobweb",
+            "cross": "minecraft:block/cobweb",
+            "cage": "pvp:block/cobweb_cage",
+        },
+        "elements": cross["elements"] + [
+            {"from": [0, 0, 0], "to": [16, 16, 16], "faces": cage_faces},
+        ],
+    })
 
 
 # ores whose mineral speckles give the frame its colour
