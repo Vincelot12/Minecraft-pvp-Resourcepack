@@ -224,10 +224,10 @@ ORES = [
 # coal's speckles are almost neutral grey (saturation ~12/255), so the
 # "most saturated pixel" the auto-detection picks is just noise - it comes
 # out an arbitrary khaki/olive that has nothing to do with coal. Give both
-# variants a fixed colour instead, one per background it needs to pop from.
+# variants the same fixed coal-black instead.
 FIXED_ORE_COLORS = {
-    "coal_ore": (45, 45, 45, 255),               # near-black against light stone
-    "deepslate_coal_ore": (195, 195, 195, 255),  # light grey against dark deepslate
+    "coal_ore": (35, 33, 30, 255),
+    "deepslate_coal_ore": (35, 33, 30, 255),
 }
 
 # ancient debris has no distinct mineral fleck to sample a colour from - its
