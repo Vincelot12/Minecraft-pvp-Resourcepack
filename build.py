@@ -332,15 +332,18 @@ def ramp_color(t):
 BOW_STEPS = 10  # thresholds 0.1 .. 1.0, plus the untinted-ish fallback below 0.1
 
 
-ARROW_MIN_SHADE = 85  # vanilla's arrow pixels are grey 100-255; the string is a flat 68
+ARROW_MIN_SHADE = 85   # vanilla's arrow pixels are grey 107-150; the string is a flat 68
+ARROW_MAX_SHADE = 160  # the bow limb's tip highlight is a brighter grey, 177-255
 
 
 def tint_arrow(img, color):
-    """Recolour only the nocked arrow, not the (also grey) bowstring.
+    """Recolour only the nocked arrow, not the (also grey) bowstring or limb highlight.
 
-    Vanilla draws both in greyscale, but at different brightness: the string
-    is a flat, dim 68/255 diagonal, while the arrow (head + shaft) sits
-    brighter at 100-255. That gap is enough to tell them apart reliably.
+    Vanilla draws the string, arrow and a highlight on the limb tip all in
+    greyscale, but at different brightness bands: the string is a flat, dim
+    68/255 diagonal, the arrow (head + shaft) sits at 107-150, and the limb
+    highlight is brighter still at 177-255. Those gaps are enough to isolate
+    just the arrow.
     """
     out = img.copy()
     px = out.load()
@@ -350,8 +353,8 @@ def tint_arrow(img, color):
             if not a or max(r, g, b) - min(r, g, b) > 25:
                 continue  # the wooden limbs are strongly tinted, leave them alone
             shade = (r + g + b) / 3
-            if shade <= ARROW_MIN_SHADE:
-                continue  # the bowstring - leave it vanilla grey
+            if shade <= ARROW_MIN_SHADE or shade > ARROW_MAX_SHADE:
+                continue  # the bowstring, or the limb tip's highlight
             shade /= 255
             px[x, y] = (round(color[0] * shade), round(color[1] * shade),
                         round(color[2] * shade), a)
