@@ -668,7 +668,7 @@ def no_vignette():
 
 EAT_SCALE = 0.03
 EAT_THRESHOLDS = [0.3, 0.55, 0.8]  # matches vanilla's ~32-tick eat/drink duration
-BITE_FRACTIONS = [0.22, 0.42, 0.62]   # solid food: growing corner bite
+BITE_FRACTIONS = [0.16, 0.33, 0.52]   # solid food: share of the sprite eaten away
 DRAIN_FRACTIONS = [0.22, 0.45, 0.7]   # liquids: top-down erosion
 
 FOOD_SOLID = [
@@ -688,21 +688,154 @@ FOOD_DRAIN = [
 ]
 
 
-def bite_erode(img, fraction):
-    """Clear a circular notch from a corner of the opaque silhouette."""
+# The cross-section revealed once a food is bitten into. Vanilla only draws
+# each item's outside, so the inside has to be stated per item - it is what
+# makes a bite read as a bite instead of a hole punched through the sprite.
+FOOD_FLESH = {
+    "apple": (243, 233, 208),             # white fruit flesh
+    "golden_apple": (250, 240, 205),
+    "enchanted_golden_apple": (250, 240, 205),
+    "baked_potato": (235, 205, 135),      # fluffy pale inside
+    "potato": (226, 202, 148),
+    "poisonous_potato": (206, 208, 138),  # sickly green-tinged
+    "beef": (168, 58, 58),                # raw muscle, darker than the surface
+    "cooked_beef": (146, 92, 58),
+    "chicken": (240, 194, 184),
+    "cooked_chicken": (233, 204, 158),
+    "mutton": (170, 62, 58),
+    "cooked_mutton": (154, 98, 64),
+    "porkchop": (242, 172, 164),
+    "cooked_porkchop": (219, 168, 112),
+    "rabbit": (238, 190, 180),
+    "cooked_rabbit": (163, 110, 72),
+    "rotten_flesh": (112, 102, 74),       # murky, not appetising
+    "beetroot": (144, 30, 62),            # deep magenta root
+    "bread": (228, 199, 148),             # pale crumb under the crust
+    "cookie": (188, 137, 86),
+    "carrot": (243, 156, 62),             # lighter than the skin
+    "golden_carrot": (250, 205, 96),
+    "chorus_fruit": (206, 178, 214),
+    "cod": (234, 220, 198),               # white fish flakes
+    "cooked_cod": (238, 228, 208),
+    "salmon": (238, 134, 106),            # pink fillet
+    "cooked_salmon": (240, 158, 108),
+    "tropical_fish": (242, 224, 212),
+    "pufferfish": (238, 228, 178),
+    "dried_kelp": (62, 88, 52),
+    "glow_berries": (255, 202, 96),
+    "sweet_berries": (202, 48, 72),
+    "melon_slice": (232, 74, 82),
+    "pumpkin_pie": (236, 172, 78),        # custard filling
+    "spider_eye": (116, 36, 48),
+}
+DEFAULT_FLESH = (226, 206, 176)
+
+# Where each item gets bitten, in normalised bounding-box coordinates -
+# (1, 0) is the top-right corner, (0, 1) the bottom-left. The default corner
+# is wrong wherever the item's artwork puts something inedible there: a
+# carrot's leaves, a fish's head, an apple's stem.
+BITE_ANCHOR = {
+    "apple": (1.0, 0.35),          # right flank, clear of the stem
+    "golden_apple": (1.0, 0.35),
+    "enchanted_golden_apple": (1.0, 0.35),
+    "beetroot": (1.0, 0.75),       # the bulb, not the leafy top
+    "carrot": (0.0, 1.0),          # root tip; the greens are top-right
+    "golden_carrot": (0.0, 1.0),
+    "glow_berries": (0.0, 1.0),    # the berries hang bottom-left
+    "cod": (1.0, 0.5),             # tail end, the head is on the left
+    "cooked_cod": (1.0, 0.5),
+}
+DEFAULT_ANCHOR = (1.0, 0.0)
+
+# Items whose sprite is mostly inedible greenery - a carrot's leaves, the
+# vine a berry hangs off. Eating a flat share of *all* their pixels would
+# chew through the edible part far too fast, so scale their bite down.
+BITE_SCALE = {
+    "carrot": 0.65,
+    "golden_carrot": 0.65,
+    "glow_berries": 0.7,
+    "sweet_berries": 0.8,
+}
+
+
+def bite_erode(img, eaten, flesh=DEFAULT_FLESH, anchor=DEFAULT_ANCHOR):
+    """Bite away `eaten` (0-1) of the item's pixels, lining the cut with flesh.
+
+    Two overlapping lobes (a big one plus a smaller one offset along the
+    edge) leave the wavy tooth-marked edge a single circle can't, and every
+    surviving pixel next to the cut is repainted in the item's flesh colour
+    so the bite shows a cross-section rather than a see-through hole.
+
+    The lobe radius is solved for rather than guessed from the bounding box:
+    a corner bite on a long thin fish and a side bite on a round apple
+    remove wildly different amounts for the same radius, so instead we
+    binary-search the radius that eats the requested share of the sprite.
+    """
     bbox = img.getbbox()
     if not bbox:
         return img
     x0, y0, x1, y1 = bbox
-    cx, cy = x1, y0  # bite from the top-right
-    diag = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
-    radius = diag * fraction
+    w, h = x1 - x0, y1 - y0
+    ax = x0 + w * anchor[0]
+    ay = y0 + h * anchor[1]
+
+    px_in = img.load()
+    solid = [(x, y)
+             for y in range(img.height)
+             for x in range(img.width)
+             if px_in[x, y][3]]
+    if not solid:
+        return img
+
+    # offset the second lobe perpendicular to the centre->anchor direction,
+    # i.e. along the item's edge, so the two bites sit side by side
+    mx, my = x0 + w / 2, y0 + h / 2
+    dx, dy = ax - mx, ay - my
+    length = (dx * dx + dy * dy) ** 0.5 or 1
+    perp_x, perp_y = -dy / length, dx / length
+
+    def bitten(radius):
+        lobes = [
+            (ax, ay, radius),
+            (ax + perp_x * radius * 0.8, ay + perp_y * radius * 0.8, radius * 0.62),
+        ]
+        return {
+            (x, y) for x, y in solid
+            if any((x - lx) ** 2 + (y - ly) ** 2 <= lr ** 2 for lx, ly, lr in lobes)
+        }
+
+    target = len(solid) * eaten
+    lo, hi = 0.0, (w * w + h * h) ** 0.5
+    for _ in range(24):
+        mid = (lo + hi) / 2
+        if len(bitten(mid)) < target:
+            lo = mid
+        else:
+            hi = mid
+    removed = bitten((lo + hi) / 2)
+
     out = img.copy()
     px = out.load()
-    for y in range(y0, y1):
-        for x in range(x0, x1):
-            if px[x, y][3] and (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2:
-                px[x, y] = (0, 0, 0, 0)
+    for x, y in removed:
+        px[x, y] = (0, 0, 0, 0)
+
+    left = [p for p in solid if p not in removed]
+
+    def rim(min_touching):
+        return [
+            (x, y) for x, y in left
+            if sum((x + ox, y + oy) in removed
+                   for ox in (-1, 0, 1) for oy in (-1, 0, 1)) >= min_touching
+        ]
+
+    # on a thin sprite (a fish, a carrot) a 1px rim off every adjacent pixel
+    # swallows the whole remainder and the item turns into a pale blob, so
+    # tighten the rim until it stays a cut edge rather than a repaint
+    edge = rim(1)
+    if left and len(edge) > 0.4 * len(left):
+        edge = rim(3)
+    for x, y in edge:
+        px[x, y] = (*flesh, 255)
     return out
 
 
@@ -795,8 +928,12 @@ def eating_animation_solid():
     for name in FOOD_SOLID:
         tex = van(f"textures/item/{FOOD_TEXTURE_OVERRIDE.get(name, name)}.png")
         stage_models = []
+        flesh = FOOD_FLESH.get(name, DEFAULT_FLESH)
+        anchor = BITE_ANCHOR.get(name, DEFAULT_ANCHOR)
+        scale = BITE_SCALE.get(name, 1.0)
         for i, frac in enumerate(BITE_FRACTIONS):
-            write_png(PVP / f"textures/item/food/{name}/{name}{i}.png", bite_erode(tex, frac))
+            write_png(PVP / f"textures/item/food/{name}/{name}{i}.png",
+                      bite_erode(tex, frac * scale, flesh, anchor))
             model_id = f"pvp:item/food/{name}/{name}{i}"
             write_json(PVP / f"models/item/food/{name}/{name}{i}.json", {
                 "parent": "minecraft:item/generated",
