@@ -6,19 +6,20 @@ Ein vanilla-kompatibles Java-Edition Resource Pack für **Minecraft 26.2** (pack
 
 | Feature | Was es macht |
 |---|---|
-| **Low Fire** | Flammen sind nur noch 2 Pixel hoch am Boden — freie Sicht beim Brennen |
-| **Tiny Tools** | Schwerter/Äxte/Spitzhacken deutlich kleiner in der Hand |
-| **Outlined Cobwebs** | Helle Umrandung um Spinnennetze, Fallen sofort erkennbar |
-| **Low Shield** | Schild sitzt tiefer und kleiner, blockiert die Sicht nicht mehr |
+| **Fullbright** | Alles ist maximal ausgeleuchtet — keine dunklen Ecken, keine Höhlen-Blindheit |
+| **Low Fire** | Flammen nur noch am Boden statt über den halben Bildschirm |
+| **Outlined Cobwebs** | Heller Rahmen um den ganzen Cobweb-Block, Fallen sofort erkennbar |
+| **Ore-Borders** | Jedes Erz bekommt einen Rahmen in seiner eigenen Mineralfarbe — Diamant cyan, Gold orange, Redstone rot usw. |
+| **Low Shield** | Schild sitzt tiefer, blockiert die Sicht nicht mehr |
 | **Shield Cooldown** | Schild färbt sich rot, wenn es von einer Axt disabled wurde, und verblasst in 5 Stufen zurück auf normal, sobald es wieder nutzbar ist |
-| **Bogen-Ladeanzeige** | Der Bogen färbt sich beim Spannen rot → orange → gelb → grün; grün heißt voll aufgeladen (loslassen!) |
-| **Kein Bobber** | Der Schwimmer einer Angel ist komplett unsichtbar — die Schnur bleibt sichtbar |
+| **Bogen-Ladeanzeige** | Nur die **Sehne** färbt sich beim Spannen rot → grün; grün heißt voll aufgeladen (loslassen!) |
+| **Bobber-Fix** | Der Schwimmer verschwindet nur, wenn er direkt vor deiner Kamera hängt (also wenn dich jemand rodded) — dein eigener Wurf bleibt normal sichtbar |
 | **Kein Kürbis-Blur** | Kürbis auf dem Kopf blockiert die Sicht nicht mehr |
 | **Kein Vignette** | Bildschirmränder verdunkeln sich nicht mehr bei wenig Leben/Hunger |
-| **Dezenter Verzauberungs-Glanz** | Enchantment-Glint auf Items/Rüstung deutlich abgeschwächt statt grell |
-| **Reduzierte Partikel** | Crit-, Sweep-, Totem- und Potion-Effect-Partikel stark abgeschwächt |
-| **Explosions-Sicht** | Explosions- und Flash-Partikel komplett unsichtbar, Rauch danach stark abgeschwächt — im Crystal-Fight wird der Bildschirm nicht mehr zugeballert |
-| **Ess-/Trink-Animation** | Essen zeigt einen wachsenden "Biss" in 3 Stufen, Getränke/Suppen einen sinkenden Flüssigkeitsstand — für alle Vanilla-Foods und -Drinks |
+| **Dezenter Verzauberungs-Glanz** | Enchantment-Glint abgeschwächt, aber noch klar erkennbar |
+| **Reduzierte Partikel** | Crit- und Sweep-Partikel komplett weg, Totem- und Potion-Effect-Partikel abgeschwächt |
+| **Explosions-Sicht** | Explosion, Flash und der Rauch danach komplett unsichtbar — im Crystal-Fight wird der Bildschirm nicht mehr zugeballert |
+| **Ess-/Trink-Animation** | Essen zeigt einen wachsenden "Biss" in 3 Stufen; bei Getränken/Suppen sinkt nur der Flüssigkeitsstand, Flasche/Eimer/Schale bleiben unangetastet |
 
 **Nicht im Pack:** "No Hurt Cam" ist kein Resource-Pack-Feature, sondern ein Vanilla-Setting:
 Optionen → Bedienungshilfen → **Damage Tilt** ausschalten.
@@ -43,7 +44,9 @@ Dann im Spiel unter Optionen → Resource Packs aktivieren.
 
 Technisch interessant:
 - **Shield/Bogen/Essen** nutzen das seit 1.21.4 datengetriebene Item-Model-Format (`assets/minecraft/items/*.json`) mit `range_dispatch` auf `minecraft:cooldown` bzw. `minecraft:use_duration`. Die Ess-Animation ist exakt dasselbe Prinzip, das z.B. [PvP For Cuties](https://modrinth.com/resourcepack/pvp-for-cuties) für seine Eating-Animation nutzt (3 Texturstufen bei `use_duration`-Schwellen 0.3/0.55/0.8) — nur mit eigenen, programmatisch erodierten Texturen statt deren Artwork.
-- **Der Bobber** ist eine Entity und lässt sich nicht per Item-Model ausblenden — seine Textur wird deshalb komplett transparent gemacht. Die Angelschnur läuft über einen eigenen Render-Type und bleibt sichtbar, ein Wurf ist also weiterhin erkennbar. Das Pack kommt damit ganz ohne Shader-Overrides aus.
+- **Der Bobber** ist eine Entity und lässt sich nicht per Item-Model ausblenden. Seine Textur-Pixel werden deshalb mit Alpha 249/255 markiert, und der Entity-Fragment-Shader verwirft genau diese Pixel, wenn sie näher als 0,55 Blöcke an der Kamera sind. Dadurch verschwindet nur der Bobber, der dir ins Gesicht geworfen wurde — dein eigener Wurf bleibt sichtbar.
+- **Fullbright** überschreibt `shaders/include/sample_lightmap.glsl` mit einer Funktion, die konstant volle Helligkeit zurückgibt. Die Lightmap selbst erzeugt das Spiel, aber jeder Shader liest sie durch genau diesen Include.
+- **Das Shield-Cooldown-Modell** muss um den Modell-Ursprung herum gebaut sein (`-6..6`), nicht wie ein normales Item in der 0..16-Box. Vanilla zeichnet das Schild über einen Special-Renderer mit eigenem Koordinatensystem; ein "normal" zentriertes Modell landet meterweit neben der Hand.
 - **Ess-/Trink-Animation**: feste Nahrung bekommt einen wachsenden kreisförmigen "Biss" aus einer Ecke der Textur, Getränke/Suppen einen von oben sinkenden Füllstand (`bite_erode`/`drain_erode` in `build.py`). Beim Trank wird nur die tint-fähige Flüssigkeits-Textur (`potion_overlay`) geleert, das Glas bleibt unverändert.
 - **Kein Vignette**: `vignette.png` wird durch ein 1×1 schwarzes Pixel ersetzt (dieselbe Technik wie bei VanillaTweaks/PvP For Cuties) statt des vanilla Radial-Gradienten.
 

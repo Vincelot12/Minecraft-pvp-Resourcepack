@@ -104,7 +104,8 @@ def scale_alpha(img, factor):
 # features
 # --------------------------------------------------------------------------
 
-KEEP_ROWS = 2  # of 16 rows per fire frame - a thin, fully opaque strip at the base
+KEEP_ROWS = 6   # of 16 rows per fire frame kept at full opacity
+FADE_ROWS = 2   # rows above that, kept faint so burning stays noticeable
 
 
 def low_fire():
@@ -116,62 +117,74 @@ def low_fire():
         px_src, px_out = src.load(), out.load()
         for f in range(frames):
             top = f * 16
-            for y in range(16 - KEEP_ROWS, 16):
+            for y in range(16):
+                if y >= 16 - KEEP_ROWS:
+                    keep = 1.0
+                elif y >= 16 - KEEP_ROWS - FADE_ROWS:
+                    keep = 0.45
+                else:
+                    continue
                 for x in range(16):
-                    px_out[x, top + y] = px_src[x, top + y]
+                    r, g, b, a = px_src[x, top + y]
+                    px_out[x, top + y] = (r, g, b, round(a * keep))
         write_png(MC / f"textures/block/{name}.png", out)
         copy_vanilla(f"textures/block/{name}.png.mcmeta")
 
 
-OUTLINE = (120, 255, 255, 255)
+COBWEB_BORDER = (150, 245, 255, 255)
+
+
+def border_frame(img, color, inset=0):
+    """Draw a one-pixel frame around the edge of a block texture."""
+    out = img.copy()
+    px = out.load()
+    lo, hi_x, hi_y = inset, img.width - 1 - inset, img.height - 1 - inset
+    for y in range(lo, hi_y + 1):
+        for x in range(lo, hi_x + 1):
+            if x in (lo, hi_x) or y in (lo, hi_y):
+                px[x, y] = color
+    return out
 
 
 def outlined_cobweb():
-    """Ring every web strand with a bright outline so traps read instantly."""
-    src = van("textures/block/cobweb.png")
-    out = src.copy()
-    px_src, px_out = src.load(), out.load()
-    for y in range(src.height):
-        for x in range(src.width):
-            if px_src[x, y][3] > 0:
-                continue
-            neighbours = [
-                (x + dx, y + dy)
-                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
-                if 0 <= x + dx < src.width and 0 <= y + dy < src.height
-            ]
-            if any(px_src[nx, ny][3] > 0 for nx, ny in neighbours):
-                px_out[x, y] = OUTLINE
-    write_png(MC / "textures/block/cobweb.png", out)
+    """Frame the whole cobweb block so traps read as a solid box from any angle."""
+    write_png(MC / "textures/block/cobweb.png",
+              border_frame(van("textures/block/cobweb.png"), COBWEB_BORDER))
 
 
-def tiny_tools():
-    """Shrink every handheld tool/weapon so it stops covering the target."""
-    write_json(MC / "models/item/handheld.json", {
-        "parent": "item/generated",
-        "display": {
-            "thirdperson_righthand": {
-                "rotation": [0, -90, 55],
-                "translation": [0, 4.0, 0.5],
-                "scale": [0.6, 0.6, 0.6],
-            },
-            "thirdperson_lefthand": {
-                "rotation": [0, 90, -55],
-                "translation": [0, 4.0, 0.5],
-                "scale": [0.6, 0.6, 0.6],
-            },
-            "firstperson_righthand": {
-                "rotation": [0, -90, 25],
-                "translation": [2.2, 4.6, 2.2],
-                "scale": [0.42, 0.42, 0.42],
-            },
-            "firstperson_lefthand": {
-                "rotation": [0, 90, -25],
-                "translation": [2.2, 4.6, 2.2],
-                "scale": [0.42, 0.42, 0.42],
-            },
-        },
-    })
+# ores whose mineral speckles give the frame its colour
+ORES = [
+    "coal_ore", "copper_ore", "diamond_ore", "emerald_ore", "gold_ore",
+    "iron_ore", "lapis_ore", "redstone_ore", "nether_gold_ore",
+    "nether_quartz_ore", "deepslate_coal_ore", "deepslate_copper_ore",
+    "deepslate_diamond_ore", "deepslate_emerald_ore", "deepslate_gold_ore",
+    "deepslate_iron_ore", "deepslate_lapis_ore", "deepslate_redstone_ore",
+]
+
+
+def ore_colour(img):
+    """Pick the most saturated colour in the texture - that is the mineral.
+
+    Brightened to full value afterwards, otherwise dark ores like coal would
+    get a border that disappears into the surrounding stone.
+    """
+    best, best_sat = (255, 255, 255), -1
+    for r, g, b, a in img.getdata():
+        if not a:
+            continue
+        sat = max(r, g, b) - min(r, g, b)
+        if sat > best_sat:
+            best, best_sat = (r, g, b), sat
+    boost = 255 / max(best) if max(best) else 1
+    return (*(min(255, round(c * boost)) for c in best), 255)
+
+
+def bordered_ores():
+    """Frame every ore in its own mineral colour so it pops out of the stone."""
+    for name in ORES:
+        rel = f"textures/block/{name}.png"
+        src = van(rel)
+        write_png(MC / rel, border_frame(src, ore_colour(src)))
 
 
 def low_shield():
@@ -179,12 +192,12 @@ def low_shield():
     model = json.loads((VANILLA / "models/item/shield.json").read_text())
     model["display"]["firstperson_righthand"] = {
         "rotation": [0, 180, 5],
-        "translation": [-14, -4, -12],
+        "translation": [-14, -2.5, -12],
         "scale": [1.0, 1.0, 1.0],
     }
     model["display"]["firstperson_lefthand"] = {
         "rotation": [0, 180, 5],
-        "translation": [14, -5, -12],
+        "translation": [14, -3.5, -12],
         "scale": [1.0, 1.0, 1.0],
     }
     write_json(MC / "models/item/shield.json", model)
@@ -207,39 +220,43 @@ def shield_cooldown():
             "textures": {"shield": f"pvp:item/shield_cooldown_{stage}"},
         })
 
-    # Geometry mirrors vanilla ShieldModel: plate 12x22x1, handle 2x6x3.
-    # UVs are the vanilla shield unwrap scaled from a 64px texture into model space.
-    u = 16 / 64
+    # Vanilla's shield is drawn by a special renderer whose geometry sits around
+    # the model origin, NOT inside the usual 0..16 item box. Building it centred
+    # like a normal item model puts it metres off to the side in first person.
     write_json(PVP / "models/item/shield_cooldown_base.json", {
-        "gui_light": "front",
-        "textures": {"particle": "block/dark_oak_planks"},
+        "parent": "minecraft:item/shield",
+        "textures": {
+            "shield": "pvp:item/shield_cooldown_1",
+            "particle": "minecraft:block/dark_oak_planks",
+        },
         "elements": [
             {
-                "from": [2, -3, 9],
-                "to": [14, 19, 10],
+                "name": "plate",
+                "from": [-6, -11, 1],
+                "to": [6, 11, 2],
                 "faces": {
-                    "north": {"uv": [1 * u, 1 * u, 13 * u, 23 * u], "texture": "#shield"},
-                    "south": {"uv": [14 * u, 1 * u, 26 * u, 23 * u], "texture": "#shield"},
-                    "west": {"uv": [0 * u, 1 * u, 1 * u, 23 * u], "texture": "#shield"},
-                    "east": {"uv": [13 * u, 1 * u, 14 * u, 23 * u], "texture": "#shield"},
-                    "up": {"uv": [1 * u, 0 * u, 13 * u, 1 * u], "texture": "#shield"},
-                    "down": {"uv": [13 * u, 0 * u, 25 * u, 1 * u], "texture": "#shield"},
+                    "north": {"uv": [3.5, 0.25, 6.5, 5.75], "texture": "#shield"},
+                    "east": {"uv": [3.25, 0.25, 3.5, 5.75], "texture": "#shield"},
+                    "south": {"uv": [0.25, 0.25, 3.25, 5.75], "texture": "#shield"},
+                    "west": {"uv": [0, 0.25, 0.25, 5.75], "texture": "#shield"},
+                    "up": {"uv": [0.25, 0, 3.25, 0.25], "texture": "#shield"},
+                    "down": {"uv": [3.25, 0, 6.25, 0.25], "texture": "#shield"},
                 },
             },
             {
-                "from": [7, 5, 6],
-                "to": [9, 11, 9],
+                "name": "handle",
+                "from": [-1, -3, -5],
+                "to": [1, 3, 1],
                 "faces": {
-                    "north": {"uv": [29 * u, 3 * u, 31 * u, 9 * u], "texture": "#shield"},
-                    "south": {"uv": [34 * u, 3 * u, 36 * u, 9 * u], "texture": "#shield"},
-                    "west": {"uv": [26 * u, 3 * u, 29 * u, 9 * u], "texture": "#shield"},
-                    "east": {"uv": [31 * u, 3 * u, 34 * u, 9 * u], "texture": "#shield"},
-                    "up": {"uv": [29 * u, 0 * u, 31 * u, 3 * u], "texture": "#shield"},
-                    "down": {"uv": [31 * u, 0 * u, 33 * u, 3 * u], "texture": "#shield"},
+                    "north": {"uv": [10, 1.5, 10.5, 3], "rotation": 180, "texture": "#shield"},
+                    "east": {"uv": [8.5, 1.5, 10, 3], "texture": "#shield"},
+                    "south": {"uv": [8, 1.5, 8.5, 3], "texture": "#shield"},
+                    "west": {"uv": [6.5, 1.5, 8, 3], "texture": "#shield"},
+                    "up": {"uv": [8, 0, 8.5, 1.5], "texture": "#shield"},
+                    "down": {"uv": [8.5, 0, 9, 1.5], "rotation": 180, "texture": "#shield"},
                 },
             },
         ],
-        "display": json.loads((VANILLA / "models/item/shield.json").read_text())["display"],
     })
 
     special = {"type": "minecraft:shield"}
@@ -281,12 +298,12 @@ def shield_cooldown():
 
 # bow charge: red while weak, green once the shot is fully charged
 BOW_RAMP = [
-    (0.0, (255, 55, 55)),
-    (0.3, (255, 120, 40)),
-    (0.5, (255, 190, 40)),
-    (0.7, (240, 230, 60)),
-    (0.9, (150, 240, 80)),
-    (1.0, (55, 255, 95)),
+    (0.0, (150, 28, 28)),
+    (0.3, (165, 70, 20)),
+    (0.5, (160, 120, 18)),
+    (0.7, (140, 140, 25)),
+    (0.9, (75, 140, 35)),
+    (1.0, (30, 155, 50)),
 ]
 
 
@@ -303,8 +320,23 @@ def ramp_color(t):
 BOW_STEPS = 10  # thresholds 0.1 .. 1.0, plus the untinted-ish fallback below 0.1
 
 
+def tint_string(img, color):
+    """Recolour only the bowstring - it is the one greyscale part of the sprite."""
+    out = img.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if not a or max(r, g, b) - min(r, g, b) > 25:
+                continue  # the wooden limbs are strongly tinted, leave them alone
+            shade = max(r, g, b) / 255
+            px[x, y] = (round(color[0] * shade), round(color[1] * shade),
+                        round(color[2] * shade), a)
+    return out
+
+
 def bow_gradient():
-    """Colour the bow from red to green so full charge is visible at a glance."""
+    """Colour the bowstring from red to green so full charge is visible at a glance."""
     art = {
         0: van("textures/item/bow_pulling_0.png"),
         1: van("textures/item/bow_pulling_1.png"),
@@ -324,7 +356,7 @@ def bow_gradient():
         t = step / BOW_STEPS
         name = f"bow_pulling_{step}"
         write_png(PVP / f"textures/item/{name}.png",
-                  tint(stage_art(t), ramp_color(t), 0.55))
+                  tint_string(stage_art(t), ramp_color(t)))
         # parenting item/bow keeps vanilla's in-hand display transforms
         write_json(PVP / f"models/item/{name}.json", {
             "parent": "minecraft:item/bow",
@@ -352,16 +384,73 @@ def bow_gradient():
     })
 
 
-def bobber():
-    """Make the fishing bobber invisible.
+BOBBER_ALPHA = 249    # marker value the shader uses to recognise bobber pixels
+BOBBER_CUTOFF = 0.55  # blocks - roughly "someone rodded you in the face"
 
-    The bobber is an entity, so it cannot be switched off by an item model -
-    but blanking its texture is enough. The line is drawn by a separate
-    render type and stays visible, so a cast is still readable.
+
+def bobber():
+    """Hide the bobber only once it is right in front of the camera.
+
+    The bobber is an entity, so an item model cannot touch it. Its texture is
+    instead marked with a slightly-transparent alpha, and the entity fragment
+    shader discards exactly those pixels when they are close enough to cover
+    your view. Your own cast stays visible at normal fishing distance.
     """
     src = van("textures/entity/fishing/fishing_hook.png")
-    write_png(MC / "textures/entity/fishing/fishing_hook.png",
-              Image.new("RGBA", src.size, (0, 0, 0, 0)))
+    out = src.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if a == 255:
+                px[x, y] = (r, g, b, BOBBER_ALPHA)
+    write_png(MC / "textures/entity/fishing/fishing_hook.png", out)
+
+    glsl = (
+        "// Bobber pixels are marked with alpha 249/255 so they can be told apart\n"
+        "// from every other entity drawn by this shader. The band stays narrow so\n"
+        "// genuinely translucent entities are never discarded.\n"
+        "bool pvp_isBobber(float alpha) {\n"
+        "    return alpha > 0.95 && alpha < 1.0;\n"
+        "}\n\n"
+        "void pvp_hideCloseBobber(float dist, float cutoff, float alpha) {\n"
+        "    if (pvp_isBobber(alpha) && dist < cutoff) {\n"
+        "        discard;\n"
+        "    }\n"
+        "}\n"
+    )
+    (MC / "shaders/include").mkdir(parents=True, exist_ok=True)
+    (MC / "shaders/include/pvp_bobber.glsl").write_text(glsl)
+
+    fsh = (VANILLA / "shaders/core/entity.fsh").read_text()
+    fsh = fsh.replace(
+        "#moj_import <minecraft:fog.glsl>",
+        "#moj_import <minecraft:fog.glsl>\n#moj_import <minecraft:pvp_bobber.glsl>",
+        1,
+    )
+    fsh = fsh.replace(
+        "    vec4 color = texture(Sampler0, texCoord0);",
+        "    vec4 color = texture(Sampler0, texCoord0);\n"
+        f"    pvp_hideCloseBobber(sphericalVertexDistance, {BOBBER_CUTOFF}, color.a);",
+        1,
+    )
+    (MC / "shaders/core").mkdir(parents=True, exist_ok=True)
+    (MC / "shaders/core/entity.fsh").write_text(fsh)
+
+
+def fullbright():
+    """Light everything at maximum, so caves and dark corners read like daylight.
+
+    The lightmap is generated by the game, but every shader reads it through
+    this one include - returning a constant makes the sample a no-op.
+    """
+    (MC / "shaders/include").mkdir(parents=True, exist_ok=True)
+    (MC / "shaders/include/sample_lightmap.glsl").write_text(
+        "#version 330\n\n"
+        "vec4 sample_lightmap(sampler2D lightMap, ivec2 uv) {\n"
+        "    return vec4(1.0);\n"
+        "}\n"
+    )
 
 
 def no_pumpkin_blur():
@@ -373,18 +462,17 @@ def no_pumpkin_blur():
 
 
 PARTICLE_ALPHA = {
-    "critical_hit": 0.3,
-    "enchanted_hit": 0.3,
+    "critical_hit": 0.0,
+    "enchanted_hit": 0.0,
     "damage": 0.3,
     "flash": 0.0,                                # crystal/TNT detonation flash
-    **{f"sweep_{i}": 0.25 for i in range(8)},
+    **{f"sweep_{i}": 0.0 for i in range(8)},
     **{f"glitter_{i}": 0.2 for i in range(8)},   # totem of undying
     **{f"effect_{i}": 0.2 for i in range(8)},    # potion effect clouds
     **{f"spell_{i}": 0.2 for i in range(8)},
-    # explosion clouds otherwise cover the whole screen in a crystal fight
+    # explosion clouds and their smoke otherwise cover the whole screen
     **{f"explosion_{i}": 0.0 for i in range(16)},
-    # the smoke an explosion leaves behind lingers just as long
-    **{f"big_smoke_{i}": 0.08 for i in range(12)},
+    **{f"big_smoke_{i}": 0.0 for i in range(12)},
 }
 
 
@@ -395,7 +483,7 @@ def reduced_particles():
         write_png(MC / rel, scale_alpha(van(rel), factor))
 
 
-GLINT_FACTOR = 0.4
+GLINT_FACTOR = 0.62
 
 
 def unobtrusive_glint():
@@ -469,20 +557,44 @@ def bite_erode(img, fraction):
     return out
 
 
-def drain_erode(img, fraction):
-    """Clear the top `fraction` of the opaque bounding box, as if drunk down."""
-    bbox = img.getbbox()
-    if not bbox:
+# Which pixels of a drinkable item are the liquid rather than the container.
+# Draining the whole sprite would eat the glass bottle or the bucket along
+# with its contents, so each one is matched on the colour of its filling.
+LIQUID_MASK = {
+    # amber honey; the glass around it is blue-tinted
+    "honey_bottle": lambda r, g, b: r > 140 and r > b + 60,
+    # dark purple brew; the bottle itself is bright teal
+    "ominous_bottle": lambda r, g, b: g < r and r + g + b < 260,
+    # only the white milk surface, not the grey bucket
+    "milk_bucket": lambda r, g, b: min(r, g, b) > 230,
+    # stew fillings sit on a dark brown bowl
+    "mushroom_stew": lambda r, g, b: b > 55 and r > 150,
+    "beetroot_soup": lambda r, g, b: g * 3 < r and r > 80,
+    "rabbit_stew": lambda r, g, b: b > 35 and r > 140,
+    "suspicious_stew": lambda r, g, b: b > 55 and r > 140,
+}
+
+
+def drain_erode(img, fraction, is_liquid=None):
+    """Lower the liquid level by `fraction`, leaving the container untouched."""
+    px_in = img.load()
+    liquid = [
+        (x, y)
+        for y in range(img.height)
+        for x in range(img.width)
+        if px_in[x, y][3] and (is_liquid is None or is_liquid(*px_in[x, y][:3]))
+    ]
+    if not liquid:
         return img
-    x0, y0, x1, y1 = bbox
-    cutoff = y0 + (y1 - y0) * fraction
+    top = min(y for _, y in liquid)
+    bottom = max(y for _, y in liquid)
+    cutoff = top + (bottom + 1 - top) * fraction
     out = img.copy()
     px = out.load()
-    for y in range(y0, round(cutoff)):
-        for x in range(x0, x1):
-            r, g, b, a = px[x, y]
-            if a:
-                px[x, y] = (r, g, b, 0)
+    for x, y in liquid:
+        if y < cutoff:
+            r, g, b, _ = px[x, y]
+            px[x, y] = (r, g, b, 0)
     return out
 
 
@@ -533,7 +645,8 @@ def eating_animation_drain():
         tex = van(f"textures/item/{name}.png")
         stage_models = []
         for i, frac in enumerate(DRAIN_FRACTIONS):
-            write_png(PVP / f"textures/item/food/{name}/{name}{i}.png", drain_erode(tex, frac))
+            write_png(PVP / f"textures/item/food/{name}/{name}{i}.png",
+                      drain_erode(tex, frac, LIQUID_MASK.get(name)))
             model_id = f"pvp:item/food/{name}/{name}{i}"
             write_json(PVP / f"models/item/food/{name}/{name}{i}.json", {
                 "parent": "minecraft:item/generated",
@@ -605,11 +718,12 @@ def main():
     pack_meta()
     low_fire()
     outlined_cobweb()
-    tiny_tools()
+    bordered_ores()
     low_shield()
     shield_cooldown()
     bow_gradient()
     bobber()
+    fullbright()
     no_pumpkin_blur()
     no_vignette()
     unobtrusive_glint()
