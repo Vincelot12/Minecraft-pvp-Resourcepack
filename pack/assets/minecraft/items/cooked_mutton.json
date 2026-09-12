@@ -1,0 +1,42 @@
+{
+  "model": {
+    "type": "minecraft:condition",
+    "property": "minecraft:using_item",
+    "on_false": {
+      "type": "minecraft:model",
+      "model": "minecraft:item/cooked_mutton"
+    },
+    "on_true": {
+      "type": "minecraft:range_dispatch",
+      "property": "minecraft:use_duration",
+      "scale": 0.03,
+      "entries": [
+        {
+          "threshold": 0.3,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/food/cooked_mutton/cooked_mutton0"
+          }
+        },
+        {
+          "threshold": 0.55,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/food/cooked_mutton/cooked_mutton1"
+          }
+        },
+        {
+          "threshold": 0.8,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/food/cooked_mutton/cooked_mutton2"
+          }
+        }
+      ],
+      "fallback": {
+        "type": "minecraft:model",
+        "model": "minecraft:item/cooked_mutton"
+      }
+    }
+  }
+}

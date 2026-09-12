@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "pvp:item/food/cooked_rabbit/cooked_rabbit1"
+  }
+}

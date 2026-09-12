@@ -442,6 +442,175 @@ def reduced_particles():
         write_png(MC / rel, scale_alpha(van(rel), factor))
 
 
+GLINT_FACTOR = 0.4
+
+
+def unobtrusive_glint():
+    """Dim the enchantment glint so it stops washing out item/armor textures."""
+    for name in ("enchanted_glint_item", "enchanted_glint_armor"):
+        rel = f"textures/misc/{name}.png"
+        src = van(rel)
+        out = src.copy()
+        px = out.load()
+        for y in range(out.height):
+            for x in range(out.width):
+                r, g, b, a = px[x, y]
+                px[x, y] = (round(r * GLINT_FACTOR), round(g * GLINT_FACTOR), round(b * GLINT_FACTOR), a)
+        write_png(MC / rel, out)
+        copy_vanilla(rel + ".mcmeta")
+
+
+def no_vignette():
+    """Stop the screen edges from darkening (matches the VanillaTweaks technique)."""
+    write_png(MC / "textures/misc/vignette.png", Image.new("RGBA", (1, 1), (0, 0, 0, 255)))
+
+
+# --------------------------------------------------------------------------
+# eating / drinking animation
+#
+# Vanilla already swaps the bow and shield model while an item is in use via
+# the item-model `range_dispatch` on `minecraft:use_duration` - the same
+# mechanism used by packs like "PvP For Cuties" for eating animations. We
+# reuse that mechanism but generate our own stage textures (a growing bite
+# notch for solid food, a draining top-down erosion for liquids) instead of
+# hand-drawn art, so every food/drink is covered without per-item painting.
+# --------------------------------------------------------------------------
+
+EAT_SCALE = 0.03
+EAT_THRESHOLDS = [0.3, 0.55, 0.8]  # matches vanilla's ~32-tick eat/drink duration
+BITE_FRACTIONS = [0.22, 0.42, 0.62]   # solid food: growing corner bite
+DRAIN_FRACTIONS = [0.22, 0.45, 0.7]   # liquids: top-down erosion
+
+FOOD_SOLID = [
+    "apple", "baked_potato", "beef", "beetroot", "bread", "carrot", "chicken",
+    "chorus_fruit", "cod", "cooked_beef", "cooked_chicken", "cooked_cod",
+    "cooked_mutton", "cooked_porkchop", "cooked_rabbit", "cooked_salmon",
+    "cookie", "dried_kelp", "glow_berries", "golden_apple", "golden_carrot",
+    "melon_slice", "mutton", "poisonous_potato", "porkchop", "potato",
+    "pufferfish", "pumpkin_pie", "rabbit", "rotten_flesh", "salmon",
+    "spider_eye", "sweet_berries", "tropical_fish", "enchanted_golden_apple",
+]
+# item id -> source texture, for items that reuse another item's artwork
+FOOD_TEXTURE_OVERRIDE = {"enchanted_golden_apple": "golden_apple"}
+FOOD_DRAIN = [
+    "honey_bottle", "milk_bucket", "ominous_bottle",
+    "beetroot_soup", "mushroom_stew", "rabbit_stew", "suspicious_stew",
+]
+
+
+def bite_erode(img, fraction):
+    """Clear a circular notch from a corner of the opaque silhouette."""
+    bbox = img.getbbox()
+    if not bbox:
+        return img
+    x0, y0, x1, y1 = bbox
+    cx, cy = x1, y0  # bite from the top-right
+    diag = ((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5
+    radius = diag * fraction
+    out = img.copy()
+    px = out.load()
+    for y in range(y0, y1):
+        for x in range(x0, x1):
+            if px[x, y][3] and (x - cx) ** 2 + (y - cy) ** 2 <= radius ** 2:
+                px[x, y] = (0, 0, 0, 0)
+    return out
+
+
+def drain_erode(img, fraction):
+    """Clear the top `fraction` of the opaque bounding box, as if drunk down."""
+    bbox = img.getbbox()
+    if not bbox:
+        return img
+    x0, y0, x1, y1 = bbox
+    cutoff = y0 + (y1 - y0) * fraction
+    out = img.copy()
+    px = out.load()
+    for y in range(y0, round(cutoff)):
+        for x in range(x0, x1):
+            r, g, b, a = px[x, y]
+            if a:
+                px[x, y] = (r, g, b, 0)
+    return out
+
+
+def food_item_json(vanilla_model_id, stage_models, tints=None):
+    def with_tints(model):
+        return {**model, "tints": tints} if tints else model
+
+    return {
+        "model": {
+            "type": "minecraft:condition",
+            "property": "minecraft:using_item",
+            "on_false": with_tints({"type": "minecraft:model", "model": vanilla_model_id}),
+            "on_true": {
+                "type": "minecraft:range_dispatch",
+                "property": "minecraft:use_duration",
+                "scale": EAT_SCALE,
+                "entries": [
+                    {
+                        "threshold": t,
+                        "model": with_tints({"type": "minecraft:model", "model": m}),
+                    }
+                    for t, m in zip(EAT_THRESHOLDS, stage_models)
+                ],
+                "fallback": with_tints({"type": "minecraft:model", "model": vanilla_model_id}),
+            },
+        }
+    }
+
+
+def eating_animation_solid():
+    for name in FOOD_SOLID:
+        tex = van(f"textures/item/{FOOD_TEXTURE_OVERRIDE.get(name, name)}.png")
+        stage_models = []
+        for i, frac in enumerate(BITE_FRACTIONS):
+            write_png(PVP / f"textures/item/food/{name}/{name}{i}.png", bite_erode(tex, frac))
+            model_id = f"pvp:item/food/{name}/{name}{i}"
+            write_json(PVP / f"models/item/food/{name}/{name}{i}.json", {
+                "parent": "minecraft:item/generated",
+                "textures": {"layer0": f"pvp:item/food/{name}/{name}{i}"},
+            })
+            stage_models.append(model_id)
+        write_json(MC / f"items/{name}.json",
+                    food_item_json(f"minecraft:item/{name}", stage_models))
+
+
+def eating_animation_drain():
+    for name in FOOD_DRAIN:
+        tex = van(f"textures/item/{name}.png")
+        stage_models = []
+        for i, frac in enumerate(DRAIN_FRACTIONS):
+            write_png(PVP / f"textures/item/food/{name}/{name}{i}.png", drain_erode(tex, frac))
+            model_id = f"pvp:item/food/{name}/{name}{i}"
+            write_json(PVP / f"models/item/food/{name}/{name}{i}.json", {
+                "parent": "minecraft:item/generated",
+                "textures": {"layer0": f"pvp:item/food/{name}/{name}{i}"},
+            })
+            stage_models.append(model_id)
+        write_json(MC / f"items/{name}.json",
+                    food_item_json(f"minecraft:item/{name}", stage_models))
+
+
+def eating_animation_potion():
+    """Potion is two layers (tinted liquid + untinted glass) - only drain the liquid."""
+    overlay = van("textures/item/potion_overlay.png")
+    tints = [{"type": "minecraft:potion", "default": -13083194}]
+    stage_models = []
+    for i, frac in enumerate(DRAIN_FRACTIONS):
+        write_png(PVP / f"textures/item/food/potion/potion_overlay{i}.png", drain_erode(overlay, frac))
+        model_id = f"pvp:item/food/potion/potion{i}"
+        write_json(PVP / f"models/item/food/potion/potion{i}.json", {
+            "parent": "minecraft:item/generated",
+            "textures": {
+                "layer0": f"pvp:item/food/potion/potion_overlay{i}",
+                "layer1": "minecraft:item/potion",
+            },
+        })
+        stage_models.append(model_id)
+    write_json(MC / "items/potion.json",
+               food_item_json("minecraft:item/potion", stage_models, tints=tints))
+
+
 def pack_meta():
     write_json(PACK / "pack.mcmeta", {
         "pack": {
@@ -489,7 +658,12 @@ def main():
     bow_gradient()
     bobber()
     no_pumpkin_blur()
+    no_vignette()
+    unobtrusive_glint()
     reduced_particles()
+    eating_animation_solid()
+    eating_animation_drain()
+    eating_animation_potion()
     files = sum(len(f) for _, _, f in os.walk(PACK))
     print(f"done - {files} files in {PACK.relative_to(ROOT)}/")
     make_zip()

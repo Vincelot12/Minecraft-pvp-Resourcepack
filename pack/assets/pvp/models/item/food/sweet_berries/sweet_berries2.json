@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "pvp:item/food/sweet_berries/sweet_berries2"
+  }
+}

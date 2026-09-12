@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "pvp:item/food/honey_bottle/honey_bottle0"
+  }
+}

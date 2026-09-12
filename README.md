@@ -14,7 +14,10 @@ Ein vanilla-kompatibles Java-Edition Resource Pack für **Minecraft 26.2** (pack
 | **Bogen-Ladeanzeige** | Der Bogen färbt sich beim Spannen rot → orange → gelb → grün; grün heißt voll aufgeladen (loslassen!) |
 | **Bobber-Fix** | Der Schwimmer einer Angel verschwindet, sobald er direkt vor der Kamera hängt — die Schnur bleibt sichtbar |
 | **Kein Kürbis-Blur** | Kürbis auf dem Kopf blockiert die Sicht nicht mehr |
+| **Kein Vignette** | Bildschirmränder verdunkeln sich nicht mehr bei wenig Leben/Hunger |
+| **Dezenter Verzauberungs-Glanz** | Enchantment-Glint auf Items/Rüstung deutlich abgeschwächt statt grell |
 | **Reduzierte Partikel** | Crit-, Sweep-, Totem- und Potion-Effect-Partikel stark abgeschwächt |
+| **Ess-/Trink-Animation** | Essen zeigt einen wachsenden "Biss" in 3 Stufen, Getränke/Suppen einen sinkenden Flüssigkeitsstand — für alle Vanilla-Foods und -Drinks |
 
 **Nicht im Pack:** "No Hurt Cam" ist kein Resource-Pack-Feature, sondern ein Vanilla-Setting:
 Optionen → Bedienungshilfen → **Damage Tilt** ausschalten.
@@ -38,8 +41,10 @@ Dann im Spiel unter Optionen → Resource Packs aktivieren.
 `build.py` lädt beim ersten Lauf die offizielle Vanilla-Client-Jar von Mojang (nach `.cache/`, nicht im Repo) und leitet **alle** Texturen daraus ab — Low Fire, Cobweb-Outline, Bogen-Farbstufen, Shield-Cooldown-Stufen und die abgeschwächten Partikel werden programmatisch generiert, nicht von Hand gemalt. Dadurch ist der komplette Pack reproduzierbar und lässt sich mit einer geänderten Konstante neu abstimmen (z.B. `KEEP_ROWS` für die Feuerhöhe oder `PARTICLE_ALPHA` für die Partikelstärke).
 
 Technisch interessant:
-- **Shield/Bogen** nutzen das seit 1.21.4 datengetriebene Item-Model-Format (`assets/minecraft/items/*.json`) mit `range_dispatch` auf `minecraft:cooldown` bzw. `minecraft:use_duration`.
+- **Shield/Bogen/Essen** nutzen das seit 1.21.4 datengetriebene Item-Model-Format (`assets/minecraft/items/*.json`) mit `range_dispatch` auf `minecraft:cooldown` bzw. `minecraft:use_duration`. Die Ess-Animation ist exakt dasselbe Prinzip, das z.B. [PvP For Cuties](https://modrinth.com/resourcepack/pvp-for-cuties) für seine Eating-Animation nutzt (3 Texturstufen bei `use_duration`-Schwellen 0.3/0.55/0.8) — nur mit eigenen, programmatisch erodierten Texturen statt deren Artwork.
 - **Der Bobber** ist eine Entity und lässt sich nicht per Item-Model ausblenden. Stattdessen werden seine Textur-Pixel mit Alpha 249/255 markiert und der Entity-Fragment-Shader verwirft genau diese Pixel, wenn sie näher als 0,42 Blöcke an der Kamera sind.
+- **Ess-/Trink-Animation**: feste Nahrung bekommt einen wachsenden kreisförmigen "Biss" aus einer Ecke der Textur, Getränke/Suppen einen von oben sinkenden Füllstand (`bite_erode`/`drain_erode` in `build.py`). Beim Trank wird nur die tint-fähige Flüssigkeits-Textur (`potion_overlay`) geleert, das Glas bleibt unverändert.
+- **Kein Vignette**: `vignette.png` wird durch ein 1×1 schwarzes Pixel ersetzt (dieselbe Technik wie bei VanillaTweaks/PvP For Cuties) statt des vanilla Radial-Gradienten.
 
 ## Status
 
@@ -47,6 +52,5 @@ Getestet ist bisher nur, dass alle JSONs valide sind und die Texturen korrekt ge
 
 ## Offen
 
-- Ess-/Trink-Animation (Anforderung muss noch präzisiert werden)
 - Crystal-PvP-Texturen (End-Kristall, Obsidian, Totem, Anker)
 - V2 mit eigenem visuellen Stil
