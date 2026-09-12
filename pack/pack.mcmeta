@@ -1,0 +1,25 @@
+{
+  "pack": {
+    "description": [
+      {
+        "text": "PvP Pack ",
+        "color": "white"
+      },
+      {
+        "text": "V1",
+        "color": "green"
+      },
+      {
+        "text": "\nvanilla-kompatibel \u00b7 ",
+        "color": "gray"
+      },
+      {
+        "text": "26.2",
+        "color": "dark_green"
+      }
+    ],
+    "pack_format": 88,
+    "min_format": 88,
+    "max_format": 88
+  }
+}

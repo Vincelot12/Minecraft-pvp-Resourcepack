@@ -1,0 +1,499 @@
+#!/usr/bin/env python3
+"""Generates the PvP resource pack from vanilla Minecraft assets.
+
+Vanilla assets are pulled from Mojang's official client jar (cached in .cache/)
+so every texture in pack/ is reproducible from source instead of hand-edited.
+"""
+
+import json
+import os
+import shutil
+import urllib.request
+import zipfile
+from pathlib import Path
+
+from PIL import Image
+
+MC_VERSION = "26.2"
+PACK_FORMAT = 88
+
+ROOT = Path(__file__).parent
+CACHE = ROOT / ".cache"
+VANILLA = CACHE / "vanilla" / "assets" / "minecraft"
+PACK = ROOT / "pack"
+MC = PACK / "assets" / "minecraft"
+PVP = PACK / "assets" / "pvp"
+
+MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
+
+
+# --------------------------------------------------------------------------
+# vanilla assets
+# --------------------------------------------------------------------------
+
+def fetch_vanilla():
+    if VANILLA.exists():
+        return
+    CACHE.mkdir(exist_ok=True)
+    jar = CACHE / f"client-{MC_VERSION}.jar"
+    if not jar.exists():
+        print(f"downloading vanilla {MC_VERSION} client jar ...")
+        with urllib.request.urlopen(MANIFEST) as f:
+            versions = json.load(f)["versions"]
+        entry = next(v for v in versions if v["id"] == MC_VERSION)
+        with urllib.request.urlopen(entry["url"]) as f:
+            meta = json.load(f)
+        urllib.request.urlretrieve(meta["downloads"]["client"]["url"], jar)
+    print("extracting vanilla assets ...")
+    with zipfile.ZipFile(jar) as z:
+        for name in z.namelist():
+            if name.startswith("assets/minecraft/") and not name.endswith("/"):
+                z.extract(name, CACHE / "vanilla")
+
+
+def van(rel):
+    return Image.open(VANILLA / rel).convert("RGBA")
+
+
+def write_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+
+
+def write_png(path, img):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path)
+
+
+def copy_vanilla(rel):
+    dst = MC / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(VANILLA / rel, dst)
+
+
+def tint(img, color, strength):
+    """Blend every non-transparent pixel towards color."""
+    out = img.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if a == 0:
+                continue
+            px[x, y] = (
+                round(r + (color[0] - r) * strength),
+                round(g + (color[1] - g) * strength),
+                round(b + (color[2] - b) * strength),
+                a,
+            )
+    return out
+
+
+def scale_alpha(img, factor):
+    out = img.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if a:
+                px[x, y] = (r, g, b, round(a * factor))
+    return out
+
+
+# --------------------------------------------------------------------------
+# features
+# --------------------------------------------------------------------------
+
+KEEP_ROWS = 6  # of 16 rows per fire frame
+
+
+def low_fire():
+    """Keep only the bottom of each fire frame so flames stop covering the screen."""
+    for name in ("fire_0", "fire_1"):
+        src = van(f"textures/block/{name}.png")
+        frames = src.height // 16
+        out = Image.new("RGBA", src.size, (0, 0, 0, 0))
+        px_src, px_out = src.load(), out.load()
+        for f in range(frames):
+            top = f * 16
+            for y in range(16):
+                # rows below the cut stay, the two rows above it fade out
+                if y >= 16 - KEEP_ROWS:
+                    keep = 1.0
+                elif y >= 16 - KEEP_ROWS - 2:
+                    keep = 0.35
+                else:
+                    keep = 0.0
+                if keep == 0.0:
+                    continue
+                for x in range(16):
+                    r, g, b, a = px_src[x, top + y]
+                    px_out[x, top + y] = (r, g, b, round(a * keep))
+        write_png(MC / f"textures/block/{name}.png", out)
+        copy_vanilla(f"textures/block/{name}.png.mcmeta")
+
+
+OUTLINE = (120, 255, 255, 255)
+
+
+def outlined_cobweb():
+    """Ring every web strand with a bright outline so traps read instantly."""
+    src = van("textures/block/cobweb.png")
+    out = src.copy()
+    px_src, px_out = src.load(), out.load()
+    for y in range(src.height):
+        for x in range(src.width):
+            if px_src[x, y][3] > 0:
+                continue
+            neighbours = [
+                (x + dx, y + dy)
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                if 0 <= x + dx < src.width and 0 <= y + dy < src.height
+            ]
+            if any(px_src[nx, ny][3] > 0 for nx, ny in neighbours):
+                px_out[x, y] = OUTLINE
+    write_png(MC / "textures/block/cobweb.png", out)
+
+
+def tiny_tools():
+    """Shrink every handheld tool/weapon so it stops covering the target."""
+    write_json(MC / "models/item/handheld.json", {
+        "parent": "item/generated",
+        "display": {
+            "thirdperson_righthand": {
+                "rotation": [0, -90, 55],
+                "translation": [0, 4.0, 0.5],
+                "scale": [0.6, 0.6, 0.6],
+            },
+            "thirdperson_lefthand": {
+                "rotation": [0, 90, -55],
+                "translation": [0, 4.0, 0.5],
+                "scale": [0.6, 0.6, 0.6],
+            },
+            "firstperson_righthand": {
+                "rotation": [0, -90, 25],
+                "translation": [2.2, 4.6, 2.2],
+                "scale": [0.42, 0.42, 0.42],
+            },
+            "firstperson_lefthand": {
+                "rotation": [0, 90, -25],
+                "translation": [2.2, 4.6, 2.2],
+                "scale": [0.42, 0.42, 0.42],
+            },
+        },
+    })
+
+
+def low_shield():
+    """Drop the shield out of the centre of the screen while blocking."""
+    model = json.loads((VANILLA / "models/item/shield.json").read_text())
+    model["display"]["firstperson_righthand"] = {
+        "rotation": [0, 180, 5],
+        "translation": [-14, -4, -12],
+        "scale": [1.0, 1.0, 1.0],
+    }
+    model["display"]["firstperson_lefthand"] = {
+        "rotation": [0, 180, 5],
+        "translation": [14, -5, -12],
+        "scale": [1.0, 1.0, 1.0],
+    }
+    write_json(MC / "models/item/shield.json", model)
+
+
+# shield cooldown: 5 stages, stage 5 = just disabled (most red)
+SHIELD_STAGES = 5
+SHIELD_RED = (225, 45, 45)
+
+
+def shield_cooldown():
+    """Tint the shield red while it is axe-disabled, fading back as it recovers."""
+    base = van("textures/entity/shield/shield_base_nopattern.png")
+    for stage in range(1, SHIELD_STAGES + 1):
+        strength = 0.15 + 0.15 * stage  # 0.30 .. 0.90
+        write_png(PVP / f"textures/item/shield_cooldown_{stage}.png",
+                  tint(base, SHIELD_RED, strength))
+        write_json(PVP / f"models/item/shield_cooldown_{stage}.json", {
+            "parent": "pvp:item/shield_cooldown_base",
+            "textures": {"shield": f"pvp:item/shield_cooldown_{stage}"},
+        })
+
+    # Geometry mirrors vanilla ShieldModel: plate 12x22x1, handle 2x6x3.
+    # UVs are the vanilla shield unwrap scaled from a 64px texture into model space.
+    u = 16 / 64
+    write_json(PVP / "models/item/shield_cooldown_base.json", {
+        "gui_light": "front",
+        "textures": {"particle": "block/dark_oak_planks"},
+        "elements": [
+            {
+                "from": [2, -3, 9],
+                "to": [14, 19, 10],
+                "faces": {
+                    "north": {"uv": [1 * u, 1 * u, 13 * u, 23 * u], "texture": "#shield"},
+                    "south": {"uv": [14 * u, 1 * u, 26 * u, 23 * u], "texture": "#shield"},
+                    "west": {"uv": [0 * u, 1 * u, 1 * u, 23 * u], "texture": "#shield"},
+                    "east": {"uv": [13 * u, 1 * u, 14 * u, 23 * u], "texture": "#shield"},
+                    "up": {"uv": [1 * u, 0 * u, 13 * u, 1 * u], "texture": "#shield"},
+                    "down": {"uv": [13 * u, 0 * u, 25 * u, 1 * u], "texture": "#shield"},
+                },
+            },
+            {
+                "from": [7, 5, 6],
+                "to": [9, 11, 9],
+                "faces": {
+                    "north": {"uv": [29 * u, 3 * u, 31 * u, 9 * u], "texture": "#shield"},
+                    "south": {"uv": [34 * u, 3 * u, 36 * u, 9 * u], "texture": "#shield"},
+                    "west": {"uv": [26 * u, 3 * u, 29 * u, 9 * u], "texture": "#shield"},
+                    "east": {"uv": [31 * u, 3 * u, 34 * u, 9 * u], "texture": "#shield"},
+                    "up": {"uv": [29 * u, 0 * u, 31 * u, 3 * u], "texture": "#shield"},
+                    "down": {"uv": [31 * u, 0 * u, 33 * u, 3 * u], "texture": "#shield"},
+                },
+            },
+        ],
+        "display": json.loads((VANILLA / "models/item/shield.json").read_text())["display"],
+    })
+
+    special = {"type": "minecraft:shield"}
+    write_json(MC / "items/shield.json", {
+        "model": {
+            "type": "minecraft:condition",
+            "property": "minecraft:using_item",
+            "on_true": {
+                "type": "minecraft:special",
+                "base": "minecraft:item/shield_blocking",
+                "model": special,
+            },
+            "on_false": {
+                "type": "minecraft:range_dispatch",
+                "property": "minecraft:cooldown",
+                "scale": SHIELD_STAGES,
+                "entries": [
+                    {
+                        "threshold": threshold,
+                        "model": {
+                            "type": "minecraft:model",
+                            "model": f"pvp:item/shield_cooldown_{stage}",
+                        },
+                    }
+                    for stage, threshold in zip(
+                        range(SHIELD_STAGES, 0, -1),
+                        [4, 3, 2, 1, 0.01],
+                    )
+                ],
+                "fallback": {
+                    "type": "minecraft:special",
+                    "base": "minecraft:item/shield",
+                    "model": special,
+                },
+            },
+        }
+    })
+
+
+# bow charge: red while weak, green once the shot is fully charged
+BOW_RAMP = [
+    (0.0, (255, 55, 55)),
+    (0.3, (255, 120, 40)),
+    (0.5, (255, 190, 40)),
+    (0.7, (240, 230, 60)),
+    (0.9, (150, 240, 80)),
+    (1.0, (55, 255, 95)),
+]
+
+
+def ramp_color(t):
+    for i in range(len(BOW_RAMP) - 1):
+        t0, c0 = BOW_RAMP[i]
+        t1, c1 = BOW_RAMP[i + 1]
+        if t0 <= t <= t1:
+            f = 0 if t1 == t0 else (t - t0) / (t1 - t0)
+            return tuple(round(c0[j] + (c1[j] - c0[j]) * f) for j in range(3))
+    return BOW_RAMP[-1][1]
+
+
+BOW_STEPS = 10  # thresholds 0.1 .. 1.0, plus the untinted-ish fallback below 0.1
+
+
+def bow_gradient():
+    """Colour the bow from red to green so full charge is visible at a glance."""
+    art = {
+        0: van("textures/item/bow_pulling_0.png"),
+        1: van("textures/item/bow_pulling_1.png"),
+        2: van("textures/item/bow_pulling_2.png"),
+    }
+
+    def stage_art(t):
+        # keep vanilla's string-pull artwork, only recolour it
+        if t >= 0.9:
+            return art[2]
+        if t >= 0.65:
+            return art[1]
+        return art[0]
+
+    entries = []
+    for step in range(BOW_STEPS + 1):
+        t = step / BOW_STEPS
+        name = f"bow_pulling_{step}"
+        write_png(PVP / f"textures/item/{name}.png",
+                  tint(stage_art(t), ramp_color(t), 0.55))
+        # parenting item/bow keeps vanilla's in-hand display transforms
+        write_json(PVP / f"models/item/{name}.json", {
+            "parent": "minecraft:item/bow",
+            "textures": {"layer0": f"pvp:item/{name}"},
+        })
+        if step > 0:
+            entries.append({
+                "threshold": round(t, 2),
+                "model": {"type": "minecraft:model", "model": f"pvp:item/{name}"},
+            })
+
+    write_json(MC / "items/bow.json", {
+        "model": {
+            "type": "minecraft:condition",
+            "property": "minecraft:using_item",
+            "on_false": {"type": "minecraft:model", "model": "minecraft:item/bow"},
+            "on_true": {
+                "type": "minecraft:range_dispatch",
+                "property": "minecraft:use_duration",
+                "scale": 0.05,
+                "entries": entries,
+                "fallback": {"type": "minecraft:model", "model": "pvp:item/bow_pulling_0"},
+            },
+        }
+    })
+
+
+BOBBER_ALPHA = 249  # marker value the shader uses to recognise bobber pixels
+BOBBER_CUTOFF = 0.42  # blocks
+
+
+def bobber():
+    """Hide the bobber once it is right in front of the camera.
+
+    The bobber is an entity, so it cannot be switched off by an item model.
+    Instead its texture is marked with a slightly-transparent alpha and the
+    entity fragment shader discards those pixels when they are close enough
+    to fill the screen - the line and every other entity stay untouched.
+    """
+    src = van("textures/entity/fishing/fishing_hook.png")
+    out = src.copy()
+    px = out.load()
+    for y in range(out.height):
+        for x in range(out.width):
+            r, g, b, a = px[x, y]
+            if a == 255:
+                px[x, y] = (r, g, b, BOBBER_ALPHA)
+    write_png(MC / "textures/entity/fishing/fishing_hook.png", out)
+
+    glsl = (
+        "// Pixels of the fishing bobber are marked with alpha 249/255 so they can\n"
+        "// be told apart from every other entity rendered by this shader. The band\n"
+        "// stays narrow so genuinely translucent entities are never discarded.\n"
+        "bool pvp_isBobber(float alpha) {\n"
+        "    return alpha > 0.95 && alpha < 1.0;\n"
+        "}\n\n"
+        "void pvp_hideCloseBobber(float dist, float cutoff, float alpha) {\n"
+        "    if (pvp_isBobber(alpha) && dist < cutoff) {\n"
+        "        discard;\n"
+        "    }\n"
+        "}\n"
+    )
+    (MC / "shaders/include").mkdir(parents=True, exist_ok=True)
+    (MC / "shaders/include/pvp_bobber.glsl").write_text(glsl)
+
+    fsh = (VANILLA / "shaders/core/entity.fsh").read_text()
+    fsh = fsh.replace(
+        "#moj_import <minecraft:fog.glsl>",
+        "#moj_import <minecraft:fog.glsl>\n#moj_import <minecraft:pvp_bobber.glsl>",
+        1,
+    )
+    fsh = fsh.replace(
+        "    vec4 color = texture(Sampler0, texCoord0);",
+        "    vec4 color = texture(Sampler0, texCoord0);\n"
+        f"    pvp_hideCloseBobber(sphericalVertexDistance, {BOBBER_CUTOFF}, color.a);",
+        1,
+    )
+    (MC / "shaders/core").mkdir(parents=True, exist_ok=True)
+    (MC / "shaders/core/entity.fsh").write_text(fsh)
+
+
+def no_pumpkin_blur():
+    """Wearing a carved pumpkin no longer blurs the screen."""
+    src = van("textures/misc/pumpkinblur.png")
+    write_png(MC / "textures/misc/pumpkinblur.png",
+              Image.new("RGBA", src.size, (0, 0, 0, 0)))
+    copy_vanilla("textures/misc/pumpkinblur.png.mcmeta")
+
+
+PARTICLE_ALPHA = {
+    "critical_hit": 0.3,
+    "enchanted_hit": 0.3,
+    "damage": 0.3,
+    **{f"sweep_{i}": 0.25 for i in range(8)},
+    **{f"glitter_{i}": 0.2 for i in range(8)},   # totem of undying
+    **{f"effect_{i}": 0.2 for i in range(8)},    # potion effect clouds
+    **{f"spell_{i}": 0.2 for i in range(8)},
+}
+
+
+def reduced_particles():
+    """Fade down the particles that spam the screen mid-fight."""
+    for name, factor in PARTICLE_ALPHA.items():
+        rel = f"textures/particle/{name}.png"
+        write_png(MC / rel, scale_alpha(van(rel), factor))
+
+
+def pack_meta():
+    write_json(PACK / "pack.mcmeta", {
+        "pack": {
+            "description": [
+                {"text": "PvP Pack ", "color": "white"},
+                {"text": "V1", "color": "green"},
+                {"text": "\nvanilla-kompatibel · ", "color": "gray"},
+                {"text": MC_VERSION, "color": "dark_green"},
+            ],
+            "pack_format": PACK_FORMAT,
+            "min_format": PACK_FORMAT,
+            "max_format": PACK_FORMAT,
+        }
+    })
+    icon = tint(van("textures/entity/shield/shield_base_nopattern.png")
+                .crop((1, 1, 13, 23)), SHIELD_RED, 0.25).resize((48, 88), Image.NEAREST)
+    canvas = Image.new("RGBA", (128, 128), (24, 26, 30, 255))
+    canvas.paste(icon, (40, 20), icon)
+    write_png(PACK / "pack.png", canvas)
+
+
+def make_zip():
+    dist = ROOT / "dist"
+    dist.mkdir(exist_ok=True)
+    target = dist / f"pvp-pack-v1-mc{MC_VERSION}.zip"
+    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as z:
+        for path in sorted(PACK.rglob("*")):
+            if path.is_file():
+                z.write(path, path.relative_to(PACK))
+    print(f"zipped -> {target.relative_to(ROOT)} "
+          f"({target.stat().st_size / 1024:.0f} KB)")
+
+
+def main():
+    fetch_vanilla()
+    if PACK.exists():
+        shutil.rmtree(PACK)
+    print("building pack ...")
+    pack_meta()
+    low_fire()
+    outlined_cobweb()
+    tiny_tools()
+    low_shield()
+    shield_cooldown()
+    bow_gradient()
+    bobber()
+    no_pumpkin_blur()
+    reduced_particles()
+    files = sum(len(f) for _, _, f in os.walk(PACK))
+    print(f"done - {files} files in {PACK.relative_to(ROOT)}/")
+    make_zip()
+
+
+if __name__ == "__main__":
+    main()

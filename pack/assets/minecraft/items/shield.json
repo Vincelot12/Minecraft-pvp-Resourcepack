@@ -1,0 +1,62 @@
+{
+  "model": {
+    "type": "minecraft:condition",
+    "property": "minecraft:using_item",
+    "on_true": {
+      "type": "minecraft:special",
+      "base": "minecraft:item/shield_blocking",
+      "model": {
+        "type": "minecraft:shield"
+      }
+    },
+    "on_false": {
+      "type": "minecraft:range_dispatch",
+      "property": "minecraft:cooldown",
+      "scale": 5,
+      "entries": [
+        {
+          "threshold": 4,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/shield_cooldown_5"
+          }
+        },
+        {
+          "threshold": 3,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/shield_cooldown_4"
+          }
+        },
+        {
+          "threshold": 2,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/shield_cooldown_3"
+          }
+        },
+        {
+          "threshold": 1,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/shield_cooldown_2"
+          }
+        },
+        {
+          "threshold": 0.01,
+          "model": {
+            "type": "minecraft:model",
+            "model": "pvp:item/shield_cooldown_1"
+          }
+        }
+      ],
+      "fallback": {
+        "type": "minecraft:special",
+        "base": "minecraft:item/shield",
+        "model": {
+          "type": "minecraft:shield"
+        }
+      }
+    }
+  }
+}

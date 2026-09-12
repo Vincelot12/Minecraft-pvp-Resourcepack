@@ -1,0 +1,6 @@
+{
+  "parent": "pvp:item/shield_cooldown_base",
+  "textures": {
+    "shield": "pvp:item/shield_cooldown_2"
+  }
+}
