@@ -6,7 +6,7 @@ Ein vanilla-kompatibles Java-Edition Resource Pack für **Minecraft 26.2** (pack
 
 | Feature | Was es macht |
 |---|---|
-| **Low Fire** | Nur noch der untere Teil der Flammen wird gerendert — freie Sicht beim Brennen |
+| **Low Fire** | Flammen sind nur noch 2 Pixel hoch am Boden — freie Sicht beim Brennen |
 | **Tiny Tools** | Schwerter/Äxte/Spitzhacken deutlich kleiner in der Hand |
 | **Outlined Cobwebs** | Helle Umrandung um Spinnennetze, Fallen sofort erkennbar |
 | **Low Shield** | Schild sitzt tiefer und kleiner, blockiert die Sicht nicht mehr |
@@ -17,6 +17,7 @@ Ein vanilla-kompatibles Java-Edition Resource Pack für **Minecraft 26.2** (pack
 | **Kein Vignette** | Bildschirmränder verdunkeln sich nicht mehr bei wenig Leben/Hunger |
 | **Dezenter Verzauberungs-Glanz** | Enchantment-Glint auf Items/Rüstung deutlich abgeschwächt statt grell |
 | **Reduzierte Partikel** | Crit-, Sweep-, Totem- und Potion-Effect-Partikel stark abgeschwächt |
+| **Explosions-Sicht** | Explosions- und Flash-Partikel fast unsichtbar — im Crystal-Fight wird der Bildschirm nicht mehr zugeballert |
 | **Ess-/Trink-Animation** | Essen zeigt einen wachsenden "Biss" in 3 Stufen, Getränke/Suppen einen sinkenden Flüssigkeitsstand — für alle Vanilla-Foods und -Drinks |
 
 **Nicht im Pack:** "No Hurt Cam" ist kein Resource-Pack-Feature, sondern ein Vanilla-Setting:
@@ -50,7 +51,19 @@ Technisch interessant:
 
 Getestet ist bisher nur, dass alle JSONs valide sind und die Texturen korrekt generiert werden — **im Spiel verifiziert ist noch nichts**. Besonders die Position des Shield-Cooldown-Modells in der Hand braucht einen Praxistest.
 
+## Was ein Resource Pack *nicht* kann
+
+Die End-Kristall-Textur lässt sich nicht sinnvoll "entschlacken" — sie besteht
+schon in Vanilla zu über der Hälfte aus vollständig transparenten Pixeln, die
+Glasflächen sind nur gepunktete Umrandungen. Die Durchsichtigkeit kommt vom
+Render-Type, nicht von der Textur.
+
+Auch die *Anzahl* der Partikel und Entities ist Spiellogik und für ein Resource
+Pack unerreichbar. Was geht, ist die bemalte Fläche zu verkleinern (siehe
+Explosions-Partikel oben) — das entlastet die Fill-Rate und vor allem die
+Übersicht, ersetzt aber keine FPS-Mod wie Sodium.
+
 ## Offen
 
-- Crystal-PvP-Texturen (End-Kristall, Obsidian, Totem, Anker)
+- Obsidian/Totem/Respawn-Anker klarer erkennbar machen
 - V2 mit eigenem visuellen Stil

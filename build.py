@@ -104,7 +104,7 @@ def scale_alpha(img, factor):
 # features
 # --------------------------------------------------------------------------
 
-KEEP_ROWS = 6  # of 16 rows per fire frame
+KEEP_ROWS = 2  # of 16 rows per fire frame - a thin, fully opaque strip at the base
 
 
 def low_fire():
@@ -116,19 +116,9 @@ def low_fire():
         px_src, px_out = src.load(), out.load()
         for f in range(frames):
             top = f * 16
-            for y in range(16):
-                # rows below the cut stay, the two rows above it fade out
-                if y >= 16 - KEEP_ROWS:
-                    keep = 1.0
-                elif y >= 16 - KEEP_ROWS - 2:
-                    keep = 0.35
-                else:
-                    keep = 0.0
-                if keep == 0.0:
-                    continue
+            for y in range(16 - KEEP_ROWS, 16):
                 for x in range(16):
-                    r, g, b, a = px_src[x, top + y]
-                    px_out[x, top + y] = (r, g, b, round(a * keep))
+                    px_out[x, top + y] = px_src[x, top + y]
         write_png(MC / f"textures/block/{name}.png", out)
         copy_vanilla(f"textures/block/{name}.png.mcmeta")
 
@@ -386,10 +376,13 @@ PARTICLE_ALPHA = {
     "critical_hit": 0.3,
     "enchanted_hit": 0.3,
     "damage": 0.3,
+    "flash": 0.1,                                # crystal/TNT detonation flash
     **{f"sweep_{i}": 0.25 for i in range(8)},
     **{f"glitter_{i}": 0.2 for i in range(8)},   # totem of undying
     **{f"effect_{i}": 0.2 for i in range(8)},    # potion effect clouds
     **{f"spell_{i}": 0.2 for i in range(8)},
+    # explosion clouds cover most of the screen in a crystal fight
+    **{f"explosion_{i}": 0.12 for i in range(16)},
 }
 
 
