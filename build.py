@@ -131,7 +131,7 @@ def low_fire():
         copy_vanilla(f"textures/block/{name}.png.mcmeta")
 
 
-COBWEB_BORDER = (150, 245, 255, 255)
+COBWEB_BORDER = (235, 235, 235, 255)
 
 
 def border_frame(img, color, inset=0, alpha=1.0, textured=False):
