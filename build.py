@@ -135,8 +135,8 @@ def low_fire():
 COBWEB_BORDER = (235, 235, 235, 255)
 
 
-def border_frame(img, color, inset=0, alpha=1.0, textured=False, thickness=1):
-    """Draw a frame around the edge of a block texture, `thickness` pixels deep.
+def border_frame(img, color, inset=0, alpha=1.0, textured=False):
+    """Draw a one-pixel frame around the edge of a block texture.
 
     alpha < 1 blends the frame into the block's own edge pixels instead of
     flatly overwriting them, so the border reads as a tinted highlight
@@ -163,23 +163,21 @@ def border_frame(img, color, inset=0, alpha=1.0, textured=False, thickness=1):
 
     for y in range(lo, hi_y + 1):
         for x in range(lo, hi_x + 1):
-            band = min(x - lo, hi_x - x, y - lo, hi_y - y)
-            if band >= thickness:
-                continue
-            r, g, b, a = px[x, y]
-            c = color
-            if textured:
-                ratio = max(0.55, min(1.5, (r + g + b) / 3 / avg_lum))
-                c = tuple(min(255, ch * ratio) for ch in color)
-            if alpha >= 1:
-                px[x, y] = (round(c[0]), round(c[1]), round(c[2]), 255)
-            else:
-                px[x, y] = (
-                    round(c[0] * alpha + r * (1 - alpha)),
-                    round(c[1] * alpha + g * (1 - alpha)),
-                    round(c[2] * alpha + b * (1 - alpha)),
-                    255,
-                )
+            if x in (lo, hi_x) or y in (lo, hi_y):
+                r, g, b, a = px[x, y]
+                c = color
+                if textured:
+                    ratio = max(0.55, min(1.5, (r + g + b) / 3 / avg_lum))
+                    c = tuple(min(255, ch * ratio) for ch in color)
+                if alpha >= 1:
+                    px[x, y] = (round(c[0]), round(c[1]), round(c[2]), 255)
+                else:
+                    px[x, y] = (
+                        round(c[0] * alpha + r * (1 - alpha)),
+                        round(c[1] * alpha + g * (1 - alpha)),
+                        round(c[2] * alpha + b * (1 - alpha)),
+                        255,
+                    )
     return out
 
 
@@ -267,12 +265,12 @@ def bordered_ores():
         rel = f"textures/block/{name}.png"
         src = van(rel)
         write_png(MC / rel,
-                  border_frame(src, ore_colour(src), alpha=0.9, textured=True, thickness=2))
+                  border_frame(src, ore_colour(src), alpha=0.85, textured=True))
     for name in DEBRIS_TEXTURES:
         rel = f"textures/block/{name}.png"
         src = van(rel)
         write_png(MC / rel,
-                  border_frame(src, DEBRIS_COLOR, alpha=0.9, textured=True, thickness=2))
+                  border_frame(src, DEBRIS_COLOR, alpha=0.85, textured=True))
 
 
 def louder_hit_sounds():
