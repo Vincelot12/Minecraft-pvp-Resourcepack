@@ -6,6 +6,7 @@ so every texture in pack/ is reproducible from source instead of hand-edited.
 """
 
 import json
+import math
 import os
 import shutil
 import urllib.request
@@ -845,6 +846,47 @@ def make_zip():
           f"({target.stat().st_size / 1024:.0f} KB)")
 
 
+def glow_pulse_frames(img, frames=16, low=0.85, high=1.3):
+    """Build a looping sequence that breathes the texture's brightness up and down."""
+    out = []
+    for i in range(frames):
+        factor = low + (high - low) * (0.5 - 0.5 * math.cos(2 * math.pi * i / frames))
+        frame = img.copy()
+        px = frame.load()
+        for y in range(frame.height):
+            for x in range(frame.width):
+                r, g, b, a = px[x, y]
+                if a:
+                    px[x, y] = (min(255, round(r * factor)),
+                                min(255, round(g * factor)),
+                                min(255, round(b * factor)), a)
+        out.append(frame)
+    return out
+
+
+def stack_vertical(frames):
+    w, h = frames[0].size
+    sheet = Image.new("RGBA", (w, h * len(frames)))
+    for i, frame in enumerate(frames):
+        sheet.paste(frame, (0, i * h))
+    return sheet
+
+
+def animated_items():
+    """Give the totem and ender eye a subtle glow-pulse animation.
+
+    Uses Minecraft's native item texture animation (frames stacked into one
+    tall PNG plus a .mcmeta) rather than any third-party pack's art - the
+    same vanilla-texture-in, procedurally-modified-out approach as the rest
+    of this pack.
+    """
+    for name in ("totem_of_undying", "ender_eye"):
+        rel = f"textures/item/{name}.png"
+        src = van(rel)
+        write_png(MC / rel, stack_vertical(glow_pulse_frames(src)))
+        write_json(MC / f"{rel}.mcmeta", {"animation": {"frametime": 3}})
+
+
 def main():
     fetch_vanilla()
     if PACK.exists():
@@ -867,6 +909,7 @@ def main():
     eating_animation_solid()
     eating_animation_drain()
     eating_animation_potion()
+    animated_items()
     files = sum(len(f) for _, _, f in os.walk(PACK))
     print(f"done - {files} files in {PACK.relative_to(ROOT)}/")
     make_zip()
