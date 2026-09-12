@@ -725,16 +725,35 @@ LIQUID_MASK = {
 
 
 def drain_erode(img, fraction, is_liquid=None):
-    """Lower the liquid level by `fraction`, leaving the container untouched."""
+    """Lower the liquid level by `fraction`, leaving the container untouched.
+
+    Vanilla's flat icons never draw anything underneath the liquid fill (no
+    "empty bowl floor" layer exists), so simply clearing drained pixels to
+    transparent punched a hole straight through to the background. Paint
+    the drained area with a darkened shade of the container's own colour
+    instead, so it reads as an empty (but solid) bowl/bucket bottom.
+    """
     px_in = img.load()
+    is_liq = lambda x, y: px_in[x, y][3] and (is_liquid is None or is_liquid(*px_in[x, y][:3]))
     liquid = [
         (x, y)
         for y in range(img.height)
         for x in range(img.width)
-        if px_in[x, y][3] and (is_liquid is None or is_liquid(*px_in[x, y][:3]))
+        if is_liq(x, y)
     ]
     if not liquid:
         return img
+    container = [
+        px_in[x, y][:3]
+        for y in range(img.height)
+        for x in range(img.width)
+        if px_in[x, y][3] and not is_liq(x, y)
+    ]
+    if container:
+        floor = tuple(round(sum(c[i] for c in container) / len(container) * 0.55)
+                      for i in range(3))
+    else:
+        floor = (35, 35, 35)
     top = min(y for _, y in liquid)
     bottom = max(y for _, y in liquid)
     cutoff = top + (bottom + 1 - top) * fraction
@@ -742,8 +761,7 @@ def drain_erode(img, fraction, is_liquid=None):
     px = out.load()
     for x, y in liquid:
         if y < cutoff:
-            r, g, b, _ = px[x, y]
-            px[x, y] = (r, g, b, 0)
+            px[x, y] = (*floor, 255)
     return out
 
 
