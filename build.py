@@ -362,58 +362,16 @@ def bow_gradient():
     })
 
 
-BOBBER_ALPHA = 249  # marker value the shader uses to recognise bobber pixels
-BOBBER_CUTOFF = 0.42  # blocks
-
-
 def bobber():
-    """Hide the bobber once it is right in front of the camera.
+    """Make the fishing bobber invisible.
 
-    The bobber is an entity, so it cannot be switched off by an item model.
-    Instead its texture is marked with a slightly-transparent alpha and the
-    entity fragment shader discards those pixels when they are close enough
-    to fill the screen - the line and every other entity stay untouched.
+    The bobber is an entity, so it cannot be switched off by an item model -
+    but blanking its texture is enough. The line is drawn by a separate
+    render type and stays visible, so a cast is still readable.
     """
     src = van("textures/entity/fishing/fishing_hook.png")
-    out = src.copy()
-    px = out.load()
-    for y in range(out.height):
-        for x in range(out.width):
-            r, g, b, a = px[x, y]
-            if a == 255:
-                px[x, y] = (r, g, b, BOBBER_ALPHA)
-    write_png(MC / "textures/entity/fishing/fishing_hook.png", out)
-
-    glsl = (
-        "// Pixels of the fishing bobber are marked with alpha 249/255 so they can\n"
-        "// be told apart from every other entity rendered by this shader. The band\n"
-        "// stays narrow so genuinely translucent entities are never discarded.\n"
-        "bool pvp_isBobber(float alpha) {\n"
-        "    return alpha > 0.95 && alpha < 1.0;\n"
-        "}\n\n"
-        "void pvp_hideCloseBobber(float dist, float cutoff, float alpha) {\n"
-        "    if (pvp_isBobber(alpha) && dist < cutoff) {\n"
-        "        discard;\n"
-        "    }\n"
-        "}\n"
-    )
-    (MC / "shaders/include").mkdir(parents=True, exist_ok=True)
-    (MC / "shaders/include/pvp_bobber.glsl").write_text(glsl)
-
-    fsh = (VANILLA / "shaders/core/entity.fsh").read_text()
-    fsh = fsh.replace(
-        "#moj_import <minecraft:fog.glsl>",
-        "#moj_import <minecraft:fog.glsl>\n#moj_import <minecraft:pvp_bobber.glsl>",
-        1,
-    )
-    fsh = fsh.replace(
-        "    vec4 color = texture(Sampler0, texCoord0);",
-        "    vec4 color = texture(Sampler0, texCoord0);\n"
-        f"    pvp_hideCloseBobber(sphericalVertexDistance, {BOBBER_CUTOFF}, color.a);",
-        1,
-    )
-    (MC / "shaders/core").mkdir(parents=True, exist_ok=True)
-    (MC / "shaders/core/entity.fsh").write_text(fsh)
+    write_png(MC / "textures/entity/fishing/fishing_hook.png",
+              Image.new("RGBA", src.size, (0, 0, 0, 0)))
 
 
 def no_pumpkin_blur():
