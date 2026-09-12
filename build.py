@@ -260,6 +260,16 @@ def shield_cooldown():
     })
 
     special = {"type": "minecraft:shield"}
+    # Vanilla wraps its special-rendered shield in this mirroring transform -
+    # without it, the special renderer's geometry comes out rotated 180°. Our
+    # own element-based cooldown models don't go through that renderer, so
+    # they don't need it (and already render correctly without it).
+    special_transform = {
+        "left_rotation": [0.0, 0.0, 0.0, 1.0],
+        "right_rotation": [0.0, 0.0, 0.0, 1.0],
+        "scale": [1.0, -1.0, -1.0],
+        "translation": [0.0, 0.0, 0.0],
+    }
     write_json(MC / "items/shield.json", {
         "model": {
             "type": "minecraft:condition",
@@ -268,6 +278,7 @@ def shield_cooldown():
                 "type": "minecraft:special",
                 "base": "minecraft:item/shield_blocking",
                 "model": special,
+                "transformation": special_transform,
             },
             "on_false": {
                 "type": "minecraft:range_dispatch",
@@ -290,6 +301,7 @@ def shield_cooldown():
                     "type": "minecraft:special",
                     "base": "minecraft:item/shield",
                     "model": special,
+                    "transformation": special_transform,
                 },
             },
         }
