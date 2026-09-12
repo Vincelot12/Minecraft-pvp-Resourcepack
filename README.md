@@ -17,7 +17,7 @@ Ein vanilla-kompatibles Java-Edition Resource Pack für **Minecraft 26.2** (pack
 | **Kein Vignette** | Bildschirmränder verdunkeln sich nicht mehr bei wenig Leben/Hunger |
 | **Dezenter Verzauberungs-Glanz** | Enchantment-Glint auf Items/Rüstung deutlich abgeschwächt statt grell |
 | **Reduzierte Partikel** | Crit-, Sweep-, Totem- und Potion-Effect-Partikel stark abgeschwächt |
-| **Explosions-Sicht** | Explosions- und Flash-Partikel fast unsichtbar — im Crystal-Fight wird der Bildschirm nicht mehr zugeballert |
+| **Explosions-Sicht** | Explosions- und Flash-Partikel komplett unsichtbar, Rauch danach stark abgeschwächt — im Crystal-Fight wird der Bildschirm nicht mehr zugeballert |
 | **Ess-/Trink-Animation** | Essen zeigt einen wachsenden "Biss" in 3 Stufen, Getränke/Suppen einen sinkenden Flüssigkeitsstand — für alle Vanilla-Foods und -Drinks |
 
 **Nicht im Pack:** "No Hurt Cam" ist kein Resource-Pack-Feature, sondern ein Vanilla-Setting:

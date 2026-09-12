@@ -376,13 +376,15 @@ PARTICLE_ALPHA = {
     "critical_hit": 0.3,
     "enchanted_hit": 0.3,
     "damage": 0.3,
-    "flash": 0.1,                                # crystal/TNT detonation flash
+    "flash": 0.0,                                # crystal/TNT detonation flash
     **{f"sweep_{i}": 0.25 for i in range(8)},
     **{f"glitter_{i}": 0.2 for i in range(8)},   # totem of undying
     **{f"effect_{i}": 0.2 for i in range(8)},    # potion effect clouds
     **{f"spell_{i}": 0.2 for i in range(8)},
-    # explosion clouds cover most of the screen in a crystal fight
-    **{f"explosion_{i}": 0.12 for i in range(16)},
+    # explosion clouds otherwise cover the whole screen in a crystal fight
+    **{f"explosion_{i}": 0.0 for i in range(16)},
+    # the smoke an explosion leaves behind lingers just as long
+    **{f"big_smoke_{i}": 0.08 for i in range(12)},
 }
 
 
