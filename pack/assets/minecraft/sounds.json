@@ -1,0 +1,52 @@
+{
+  "entity.player.attack.crit": {
+    "subtitle": "subtitles.entity.player.attack.crit",
+    "sounds": [
+      {
+        "name": "entity/player/attack/crit1",
+        "volume": 1.4
+      },
+      {
+        "name": "entity/player/attack/crit2",
+        "volume": 1.4
+      },
+      {
+        "name": "entity/player/attack/crit3",
+        "volume": 1.4
+      }
+    ]
+  },
+  "entity.player.attack.sweep": {
+    "subtitle": "subtitles.entity.player.attack.sweep",
+    "sounds": [
+      {
+        "name": "entity/player/attack/sweep1",
+        "volume": 1.1
+      },
+      {
+        "name": "entity/player/attack/sweep2",
+        "volume": 1.1
+      },
+      {
+        "name": "entity/player/attack/sweep3",
+        "volume": 1.1
+      },
+      {
+        "name": "entity/player/attack/sweep4",
+        "volume": 1.1
+      },
+      {
+        "name": "entity/player/attack/sweep5",
+        "volume": 1.1
+      },
+      {
+        "name": "entity/player/attack/sweep6",
+        "volume": 1.1
+      },
+      {
+        "name": "entity/player/attack/sweep7",
+        "volume": 1.1
+      }
+    ]
+  }
+}

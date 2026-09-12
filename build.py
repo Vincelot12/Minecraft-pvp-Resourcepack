@@ -134,15 +134,29 @@ def low_fire():
 COBWEB_BORDER = (150, 245, 255, 255)
 
 
-def border_frame(img, color, inset=0):
-    """Draw a one-pixel frame around the edge of a block texture."""
+def border_frame(img, color, inset=0, alpha=1.0):
+    """Draw a one-pixel frame around the edge of a block texture.
+
+    alpha < 1 blends the frame into the block's own edge pixels instead of
+    flatly overwriting them, so the border reads as a tinted highlight
+    rather than a solid sticker outline.
+    """
     out = img.copy()
     px = out.load()
     lo, hi_x, hi_y = inset, img.width - 1 - inset, img.height - 1 - inset
     for y in range(lo, hi_y + 1):
         for x in range(lo, hi_x + 1):
             if x in (lo, hi_x) or y in (lo, hi_y):
-                px[x, y] = color
+                if alpha >= 1:
+                    px[x, y] = color
+                else:
+                    r, g, b, a = px[x, y]
+                    px[x, y] = (
+                        round(color[0] * alpha + r * (1 - alpha)),
+                        round(color[1] * alpha + g * (1 - alpha)),
+                        round(color[2] * alpha + b * (1 - alpha)),
+                        255,
+                    )
     return out
 
 
@@ -165,8 +179,11 @@ ORES = [
 def ore_colour(img):
     """Pick the most saturated colour in the texture - that is the mineral.
 
-    Brightened to full value afterwards, otherwise dark ores like coal would
-    get a border that disappears into the surrounding stone.
+    Earlier versions scaled this straight up to full brightness, which
+    washed pale flecks (e.g. iron's tan) out into a neon pastel. Instead,
+    widen the colour's saturation around its own mean and cap the peak
+    brightness below pure white, then guarantee a minimum brightness so
+    dark ores like coal still stand out against the stone.
     """
     best, best_sat = (255, 255, 255), -1
     for r, g, b, a in img.getdata():
@@ -175,8 +192,19 @@ def ore_colour(img):
         sat = max(r, g, b) - min(r, g, b)
         if sat > best_sat:
             best, best_sat = (r, g, b), sat
-    boost = 255 / max(best) if max(best) else 1
-    return (*(min(255, round(c * boost)) for c in best), 255)
+
+    mean = sum(best) / 3
+    boosted = [mean + (c - mean) * 1.5 for c in best]
+    boosted = [max(0, c) for c in boosted]
+
+    peak = max(boosted)
+    if peak > 225:
+        boosted = [c * 225 / peak for c in boosted]
+    peak = max(boosted)
+    if peak < 150:
+        boosted = [c * 150 / peak for c in boosted]
+
+    return (*(min(255, round(c)) for c in boosted), 255)
 
 
 def bordered_ores():
@@ -184,7 +212,31 @@ def bordered_ores():
     for name in ORES:
         rel = f"textures/block/{name}.png"
         src = van(rel)
-        write_png(MC / rel, border_frame(src, ore_colour(src)))
+        write_png(MC / rel, border_frame(src, ore_colour(src), alpha=0.85))
+
+
+def louder_hit_sounds():
+    """Boost the crit and sweep hit sounds - vanilla mixes both at 0.7 volume,
+    which makes them easy to miss under other combat noise. Re-declare the
+    same vanilla sound files with a higher volume; the actual .ogg files
+    still resolve from vanilla since this pack ships no audio of its own.
+    """
+    write_json(MC / "sounds.json", {
+        "entity.player.attack.crit": {
+            "subtitle": "subtitles.entity.player.attack.crit",
+            "sounds": [
+                {"name": f"entity/player/attack/crit{n}", "volume": 1.4}
+                for n in (1, 2, 3)
+            ],
+        },
+        "entity.player.attack.sweep": {
+            "subtitle": "subtitles.entity.player.attack.sweep",
+            "sounds": [
+                {"name": f"entity/player/attack/sweep{n}", "volume": 1.1}
+                for n in range(1, 8)
+            ],
+        },
+    })
 
 
 def low_shield():
@@ -745,6 +797,7 @@ def main():
     low_fire()
     outlined_cobweb()
     bordered_ores()
+    louder_hit_sounds()
     low_shield()
     shield_cooldown()
     bow_gradient()
