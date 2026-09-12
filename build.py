@@ -134,27 +134,47 @@ def low_fire():
 COBWEB_BORDER = (150, 245, 255, 255)
 
 
-def border_frame(img, color, inset=0, alpha=1.0):
+def border_frame(img, color, inset=0, alpha=1.0, textured=False):
     """Draw a one-pixel frame around the edge of a block texture.
 
     alpha < 1 blends the frame into the block's own edge pixels instead of
     flatly overwriting them, so the border reads as a tinted highlight
     rather than a solid sticker outline.
+
+    textured=True additionally modulates each border pixel's brightness by
+    its own original luminance (relative to the block's average), so the
+    frame carries the same grain/noise as the underlying stone instead of
+    being one flat colour.
     """
     out = img.copy()
     px = out.load()
     lo, hi_x, hi_y = inset, img.width - 1 - inset, img.height - 1 - inset
+
+    avg_lum = 128.0
+    if textured:
+        total, n = 0, 0
+        for r, g, b, a in img.getdata():
+            if a:
+                total += (r + g + b) / 3
+                n += 1
+        if n:
+            avg_lum = total / n
+
     for y in range(lo, hi_y + 1):
         for x in range(lo, hi_x + 1):
             if x in (lo, hi_x) or y in (lo, hi_y):
+                r, g, b, a = px[x, y]
+                c = color
+                if textured:
+                    ratio = max(0.55, min(1.5, (r + g + b) / 3 / avg_lum))
+                    c = tuple(min(255, ch * ratio) for ch in color)
                 if alpha >= 1:
-                    px[x, y] = color
+                    px[x, y] = (round(c[0]), round(c[1]), round(c[2]), 255)
                 else:
-                    r, g, b, a = px[x, y]
                     px[x, y] = (
-                        round(color[0] * alpha + r * (1 - alpha)),
-                        round(color[1] * alpha + g * (1 - alpha)),
-                        round(color[2] * alpha + b * (1 - alpha)),
+                        round(c[0] * alpha + r * (1 - alpha)),
+                        round(c[1] * alpha + g * (1 - alpha)),
+                        round(c[2] * alpha + b * (1 - alpha)),
                         255,
                     )
     return out
@@ -174,6 +194,12 @@ ORES = [
     "deepslate_diamond_ore", "deepslate_emerald_ore", "deepslate_gold_ore",
     "deepslate_iron_ore", "deepslate_lapis_ore", "deepslate_redstone_ore",
 ]
+
+# ancient debris has no distinct mineral fleck to sample a colour from - its
+# most-saturated pixel is just its own dark rock, so it gets a fixed warm
+# ember colour instead of the auto-detected one every other ore uses.
+DEBRIS_TEXTURES = ["ancient_debris_side", "ancient_debris_top"]
+DEBRIS_COLOR = (216, 120, 55, 255)
 
 
 def ore_colour(img):
@@ -212,7 +238,13 @@ def bordered_ores():
     for name in ORES:
         rel = f"textures/block/{name}.png"
         src = van(rel)
-        write_png(MC / rel, border_frame(src, ore_colour(src), alpha=0.85))
+        write_png(MC / rel,
+                  border_frame(src, ore_colour(src), alpha=0.85, textured=True))
+    for name in DEBRIS_TEXTURES:
+        rel = f"textures/block/{name}.png"
+        src = van(rel)
+        write_png(MC / rel,
+                  border_frame(src, DEBRIS_COLOR, alpha=0.85, textured=True))
 
 
 def louder_hit_sounds():
