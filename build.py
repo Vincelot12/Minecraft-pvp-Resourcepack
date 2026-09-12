@@ -320,8 +320,16 @@ def ramp_color(t):
 BOW_STEPS = 10  # thresholds 0.1 .. 1.0, plus the untinted-ish fallback below 0.1
 
 
-def tint_string(img, color):
-    """Recolour only the bowstring - it is the one greyscale part of the sprite."""
+ARROW_MIN_SHADE = 85  # vanilla's arrow pixels are grey 100-255; the string is a flat 68
+
+
+def tint_arrow(img, color):
+    """Recolour only the nocked arrow, not the (also grey) bowstring.
+
+    Vanilla draws both in greyscale, but at different brightness: the string
+    is a flat, dim 68/255 diagonal, while the arrow (head + shaft) sits
+    brighter at 100-255. That gap is enough to tell them apart reliably.
+    """
     out = img.copy()
     px = out.load()
     for y in range(out.height):
@@ -329,7 +337,10 @@ def tint_string(img, color):
             r, g, b, a = px[x, y]
             if not a or max(r, g, b) - min(r, g, b) > 25:
                 continue  # the wooden limbs are strongly tinted, leave them alone
-            shade = max(r, g, b) / 255
+            shade = (r + g + b) / 3
+            if shade <= ARROW_MIN_SHADE:
+                continue  # the bowstring - leave it vanilla grey
+            shade /= 255
             px[x, y] = (round(color[0] * shade), round(color[1] * shade),
                         round(color[2] * shade), a)
     return out
@@ -356,7 +367,7 @@ def bow_gradient():
         t = step / BOW_STEPS
         name = f"bow_pulling_{step}"
         write_png(PVP / f"textures/item/{name}.png",
-                  tint_string(stage_art(t), ramp_color(t)))
+                  tint_arrow(stage_art(t), ramp_color(t)))
         # parenting item/bow keeps vanilla's in-hand display transforms
         write_json(PVP / f"models/item/{name}.json", {
             "parent": "minecraft:item/bow",
