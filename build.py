@@ -988,12 +988,10 @@ def eat_stage(img, eaten, spec):
 
 
 
-# Which pixels of a bowl or bucket are the liquid rather than the container.
-# Draining the whole sprite would eat the bucket along with its contents, so
-# each one is matched on the colour of its filling.
+# Which pixels of a stew bowl are the soup rather than the bowl. Draining the
+# whole sprite would eat the bowl along with its contents, so each one is
+# matched on the colour of its filling.
 LIQUID_MASK = {
-    # only the white milk surface, not the grey bucket
-    "milk_bucket": lambda r, g, b: min(r, g, b) > 230,
     # stew fillings sit on a dark brown bowl
     "mushroom_stew": lambda r, g, b: b > 55 and r > 150,
     "beetroot_soup": lambda r, g, b: g * 3 < r and r > 80,
@@ -1003,12 +1001,12 @@ LIQUID_MASK = {
 
 
 def drain_erode(img, fraction, is_liquid):
-    """Lower the liquid in a bowl or bucket by `fraction`.
+    """Lower the soup in a bowl by `fraction`.
 
     Vanilla's flat icons never draw anything underneath the liquid fill, so
     clearing drained pixels would punch a hole through the container to the
-    background. Bowls and buckets are opaque, so paint the drained area with
-    a darkened shade of the container's own colour instead - an empty bottom.
+    background. A bowl is opaque, so paint the drained area with a darkened
+    shade of the bowl's own colour instead - an empty bottom.
     """
     px_in = img.load()
     liquid, container = [], []
@@ -1049,13 +1047,14 @@ def uncork(img):
     return out
 
 
-def drain_bottle(img, fraction, is_contents, empty):
-    """Drain a glass bottle top-down until it looks like `empty`.
+def drain_to_empty(img, fraction, is_contents, empty):
+    """Drain a container top-down until it looks like `empty`, its vanilla
+    empty counterpart.
 
-    Glass is see-through, so unlike a bowl the drained space mustn't be
-    painted over - that just reads as a bottle still full of something.
-    Each drained pixel takes whatever the empty bottle has in that spot:
-    clear glass, or one of its highlights. The cork is off from the first sip.
+    Painting the drained space with a flat colour reads as a container still
+    full of something, so each drained pixel takes whatever the empty version
+    has in that spot instead: clear glass or a highlight in a bottle, the
+    shaded inside of a bucket. A bottle's cork is off from the first sip.
     """
     src = img.load()
     ref = empty.load()
@@ -1128,20 +1127,24 @@ def eating_animation_solid():
 def eating_animation_drain():
     glass_bottle = van("textures/item/glass_bottle.png")
     glass_px = glass_bottle.load()
-    empty = Image.new("RGBA", glass_bottle.size, (0, 0, 0, 0))
-    bottles = {
+    bucket = van("textures/item/bucket.png")
+    bucket_px = bucket.load()
+    nothing = Image.new("RGBA", glass_bottle.size, (0, 0, 0, 0))
+    empties = {
         # the honey bottle is vanilla's glass bottle with honey drawn in, so
         # drained honey turns back into exactly that empty bottle
         "honey_bottle": (lambda x, y, rgb: (*rgb, 255) != glass_px[x, y], uncork(glass_bottle)),
+        # likewise the milk bucket is the empty bucket with a milk surface on top
+        "milk_bucket": (lambda x, y, rgb: (*rgb, 255) != bucket_px[x, y], bucket),
         # no vanilla empty version exists - only its teal glass is left over
-        "ominous_bottle": (ominous_brew, empty),
+        "ominous_bottle": (ominous_brew, nothing),
     }
     for name in FOOD_DRAIN:
         tex = van(f"textures/item/{name}.png")
         stage_models = []
         for i, frac in enumerate(DRAIN_FRACTIONS):
-            if name in bottles:
-                stage = drain_bottle(tex, frac, *bottles[name])
+            if name in empties:
+                stage = drain_to_empty(tex, frac, *empties[name])
             else:
                 stage = drain_erode(tex, frac, LIQUID_MASK[name])
             write_png(PVP / f"textures/item/food/{name}/{name}{i}.png", stage)
@@ -1167,7 +1170,7 @@ def eating_animation_potion():
     stage_models = []
     for i, frac in enumerate(DRAIN_FRACTIONS):
         write_png(PVP / f"textures/item/food/potion/potion_overlay{i}.png",
-                  drain_bottle(overlay, frac, lambda x, y, rgb: True, nothing))
+                  drain_to_empty(overlay, frac, lambda x, y, rgb: True, nothing))
         model_id = f"pvp:item/food/potion/potion{i}"
         write_json(PVP / f"models/item/food/potion/potion{i}.json", {
             "parent": "minecraft:item/generated",
