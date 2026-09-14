@@ -790,23 +790,12 @@ def salmon_like(flesh):
     }
 
 
-# a drumstick bone with a knuckle at each end
-DRUMSTICK = seg((5, 11), (11, 5)) + [(4, 11), (4, 12), (5, 12), (11, 4), (12, 4), (12, 5)]
-
-
 def drumstick(flesh):
     return {
         "flesh": flesh,
         "anchors": [(2, 2, 0), (14, 13, 2)],
         "stages": (0.3, 0.62, 0.93),
-        "core": [(DRUMSTICK, BONE)],
     }
-
-
-# spine along the back, three pairs of ribs, a front and a hind leg
-RABBIT_BONES = (seg((3, 6), (13, 6))
-                + [(6, 5), (6, 7), (8, 5), (8, 7), (10, 5), (10, 7)]
-                + seg((11, 7), (13, 12)) + seg((4, 7), (5, 11)))
 
 
 def rabbit(flesh):
@@ -814,30 +803,22 @@ def rabbit(flesh):
         "flesh": flesh,
         "anchors": [(8, 0, 0), (7, 14, 1.5)],
         "stages": (0.3, 0.62, 0.93),
-        "core": [(RABBIT_BONES, BONE)],
     }
-
-
-# the leg bone runs up into the narrow shank, knuckled at both ends
-LEG_BONE = seg((11, 2), (5, 12)) + [(11, 1), (12, 1), (12, 2), (4, 12), (4, 13), (5, 13)]
 
 
 def mutton(flesh):
     return {
         "flesh": flesh,
-        # both sides of the bone, and up from the broad end so it isn't left hanging
         "anchors": [(2, 4, 0), (15, 11, 1), (6, 17, 1.5)],
         "stages": (0.3, 0.62, 0.92),
-        "core": [(LEG_BONE, BONE)],
     }
 
 
-def porkchop(flesh, bone):
+def porkchop(flesh):
     return {
         "flesh": flesh,
-        "anchors": [(1, 14, 0), (4, 1, 2.5)],  # the meaty end first, the rib bone last
+        "anchors": [(1, 14, 0), (4, 1, 2.5)],  # the meaty end first, the rib end last
         "stages": (0.3, 0.62, 0.9),
-        "core": [(bone, BONE)],
     }
 
 
@@ -883,10 +864,8 @@ FOOD_SPEC = {
     "cooked_rabbit": rabbit((163, 110, 72)),
     "mutton": mutton((170, 62, 58)),
     "cooked_mutton": mutton((154, 98, 64)),
-    "porkchop": porkchop((242, 172, 164),
-                         seg((10, 3), (13, 8)) + [(10, 2), (9, 3), (14, 8), (13, 9)]),
-    "cooked_porkchop": porkchop((219, 168, 112),
-                                seg((10, 4), (13, 9)) + [(10, 3), (9, 4), (13, 8), (12, 9)]),
+    "porkchop": porkchop((242, 172, 164)),
+    "cooked_porkchop": porkchop((219, 168, 112)),
     "carrot": {
         "flesh": (243, 156, 62),
         "anchors": [(1, 15, 0)],  # from the root tip up to the greens
