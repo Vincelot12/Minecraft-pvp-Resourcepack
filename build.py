@@ -790,30 +790,40 @@ def salmon_like(flesh):
     }
 
 
-# A whole roast chicken is eaten down to its carcass: the ribcage where the
-# breast was, and two drumstick bones running from the pelvis out to the two
-# knuckles that already poke out of vanilla's sprite at the bottom-left.
+# A whole roast chicken is eaten down to its carcass: a spine with three pairs
+# of ribs curving down off it where the breast was, the pelvis at its base,
+# and two drumstick bones from the hips out to the two knuckles that already
+# poke out of vanilla's sprite at the bottom-left.
 CHICKEN_KNUCKLES = {(2, 11), (2, 12), (5, 13), (4, 14)}
-CHICKEN_RIBCAGE = [(7, 2), (8, 2), (9, 2), (10, 2), (6, 3), (11, 3),
-                   (5, 4), (7, 4), (8, 4), (9, 4), (10, 4), (12, 4),
-                   (5, 5), (12, 5),
-                   (5, 6), (7, 6), (8, 6), (9, 6), (10, 6), (12, 6),
-                   (6, 7), (11, 7), (7, 8), (8, 8), (9, 8), (10, 8)]
-CHICKEN_LEGS = [(6, 8), (5, 8), (4, 9), (3, 10),    # out to the knuckle at (2, 11)
-                (7, 9), (7, 10), (6, 11), (5, 12)]  # out to the knuckle at (5, 13)
-# vanilla's own knuckle colours, so the new bones match the ones already drawn
+# vanilla's own knuckle colours, plus a darker one for the far side of the pelvis
 CHICKEN_BONE = (238, 202, 172)
 CHICKEN_BONE_SHADE = (222, 170, 131)
+CHICKEN_BONE_DARK = (176, 126, 92)
+
+
+def chicken_carcass():
+    lit = [(8, y) for y in range(2, 9)]                  # spine
+    shaded = []
+    for y in (3, 5, 7):                                  # ribs: out sideways, bent down at the tip
+        lit += [(7, y), (6, y), (5, y + 1)]
+        shaded += [(9, y), (10, y), (11, y + 1)]        # the side facing away from the light
+    shaded += [(7, 9), (8, 9)]                           # pelvis
+    lit += [(6, 10), (5, 10), (4, 11), (3, 11),          # drumstick to the knuckle at (2, 11)
+            (8, 10), (7, 11), (6, 12)]                   # drumstick to the knuckle at (5, 13)
+    shaded += [(5, 11), (4, 12), (3, 12), (8, 11), (7, 12), (6, 13)]  # their undersides
+    return [(lit, CHICKEN_BONE), (shaded, CHICKEN_BONE_SHADE), ([(9, 9)], CHICKEN_BONE_DARK)]
+
+
+CHICKEN_CARCASS = chicken_carcass()
 
 
 def chicken(flesh):
-    lit = [(x, y) for x, y in CHICKEN_RIBCAGE if x + y <= 14]  # lower-right half is in shadow
     return {
         "flesh": flesh,
         "anchors": [(15, 1, 0), (15, 11, 1)],  # the breast first, the drumsticks last
         "stages": (0.3, 0.62, 1.0),
         "keep": lambda x, y, rgb: (x, y) in CHICKEN_KNUCKLES,
-        "core": [(CHICKEN_RIBCAGE, CHICKEN_BONE_SHADE), (lit + CHICKEN_LEGS, CHICKEN_BONE)],
+        "core": CHICKEN_CARCASS,
     }
 
 
