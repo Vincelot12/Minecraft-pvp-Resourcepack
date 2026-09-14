@@ -1,6 +1,6 @@
 # Minecraft PvP Resource Pack
 
-Vanilla-kompatibles Resource Pack für **Minecraft Java 26.2** (pack_format 88). Kein OptiFine, keine Mods – läuft überall, wo normale Resource Packs erlaubt sind.
+Vanilla-kompatibles Resource Pack für **Minecraft Java 26.2** (pack_format 88).
 
 ## Features
 
@@ -30,11 +30,3 @@ Vanilla-kompatibles Resource Pack für **Minecraft Java 26.2** (pack_format 88).
 ## Installation
 
 Die Zip aus `dist/` in den `resourcepacks`-Ordner legen und im Spiel unter *Optionen → Resource Packs* aktivieren.
-
-## Selbst bauen
-
-```bash
-python3 build.py
-```
-
-Braucht Python 3 und Pillow. Beim ersten Lauf lädt das Skript die offizielle Vanilla-Client-Jar nach `.cache/` und erzeugt daraus `pack/` und `dist/pvp-pack-v1-mc26.2.zip`. Jede Textur wird programmatisch aus den Vanilla-Assets generiert, nichts ist von Hand gemalt.
