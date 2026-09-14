@@ -669,7 +669,7 @@ def no_vignette():
 
 EAT_SCALE = 0.03
 EAT_THRESHOLDS = [0.3, 0.55, 0.8]  # matches vanilla's ~32-tick eat/drink duration
-DRAIN_FRACTIONS = [0.22, 0.45, 0.7]   # liquids: top-down erosion
+DRAIN_FRACTIONS = [0.3, 0.65, 1.0]   # liquids: top-down erosion, fully empty by the last sip
 
 FOOD_SOLID = [
     "apple", "baked_potato", "beef", "beetroot", "bread", "carrot", "chicken",
