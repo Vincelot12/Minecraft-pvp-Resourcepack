@@ -698,6 +698,8 @@ FOOD_DRAIN = [
 #   stages  - share of the edible pixels gone at each animation stage
 #   keep    - pixels that are never eaten (rind, stem, leaves, head, fins)
 #   core    - (pixels, colour) uncovered once the flesh around them is gone
+#   scraps  - keep the core covered in meat until the last stage, then leave
+#             meat wherever it touches at least this many core pixels
 # Coordinates refer to the item's 16x16 vanilla sprite.
 
 BONE = (236, 230, 212)
@@ -824,6 +826,7 @@ def chicken(flesh):
         "stages": (0.3, 0.62, 1.0),
         "keep": lambda x, y, rgb: (x, y) in CHICKEN_KNUCKLES,
         "core": CHICKEN_CARCASS,
+        "scraps": 4,  # meat stays wedged between the ribs and at the joints
     }
 
 
@@ -950,6 +953,10 @@ def eat_stage(img, eaten, spec):
     either, but take their own colour once the front reaches or bares them.
     Edible pixels left beside a gap get the flesh colour, so the cut shows a
     cross-section instead of a hole through to the background.
+
+    With `scraps`, the meat on the bones is left alone until the last stage:
+    earlier stages only eat what lies further out and the bones stay hidden,
+    then the last one strips them bare but for the scraps wedged between them.
     """
     src = img.load()
     solid = {(x, y) for y in range(img.height) for x in range(img.width) if src[x, y][3]}
@@ -960,7 +967,16 @@ def eat_stage(img, eaten, spec):
                 core[p] = colour
     keep_fn = spec.get("keep")
     keep = {p for p in solid if p not in core and keep_fn and keep_fn(*p, src[p][:3])}
-    edible = [p for p in solid if p not in core and p not in keep]
+
+    meaty = "scraps" in spec
+    final = eaten >= 1
+    on_bone = set()
+    if meaty:
+        def bones_touching(p):
+            return sum((p[0] + ox, p[1] + oy) in core for ox in (-1, 0, 1) for oy in (-1, 0, 1))
+        around = {p for p in solid if p not in core and p not in keep and bones_touching(p)}
+        on_bone = {p for p in around if bones_touching(p) >= spec["scraps"]} if final else around
+    edible = [p for p in solid if p not in core and p not in keep and p not in on_bone]
 
     def priority(p):
         return min(
@@ -982,20 +998,27 @@ def eat_stage(img, eaten, spec):
     px = out.load()
     for p in gone:
         px[p] = (0, 0, 0, 0)
-    for p, colour in core.items():
-        if priority(p) <= reach or gaps_around(p):
-            px[p] = (*colour, 255)
+    if meaty:
+        bared = set(core) if final else set()
+    else:
+        bared = {p for p in core if priority(p) <= reach or gaps_around(p)}
+    for p in bared:
+        px[p] = (*core[p], 255)
 
+    # meat still on the item: the uneaten edible part, plus - while the bones
+    # are still covered - the meat on and over them. Scraps left on bared
+    # bones keep their own colour; a pale cut face would blend into the bone.
+    left = [p for p in edible if p not in gone]
+    if meaty and not final:
+        left += list(on_bone) + list(core)
     # on a thin sprite a rim off every pixel touching the cut swallows the
     # whole remainder, so tighten it until it stays an edge, not a repaint
-    left = [p for p in edible if p not in gone]
     rim = [p for p in left if gaps_around(p)]
     if left and len(rim) > 0.4 * len(left):
         rim = [p for p in left if gaps_around(p) >= 3]
     for p in rim:
         px[p] = (*spec["flesh"], 255)
     return out
-
 
 
 # Which pixels of a stew bowl are the soup rather than the bowl. Draining the
