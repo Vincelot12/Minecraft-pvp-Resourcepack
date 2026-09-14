@@ -23,7 +23,7 @@ Vanilla-kompatibles Resource Pack für **Minecraft Java 26.2** (pack_format 88).
 **Items**
 - **Ess-Animation** für jedes Essen einzeln, auch in der Hotbar: Äpfel enden als Griebsch, Melonen als Schale, Fisch als Gräten, Hähnchen als Gerippe mit Fleischresten
 - **Trink-Animation** – der Korken ist ab dem ersten Schluck weg, Flaschen und Eimer sind am Ende wirklich leer
-- Totem und Enderauge pulsieren
+
 
 > Kein Pack-Feature, aber für PvP empfohlen: *Optionen → Bedienungshilfen → Damage Tilt* ausschalten.
 
