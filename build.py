@@ -1007,7 +1007,13 @@ LIQUID_MASK = {
 }
 
 
-def drain_erode(img, fraction, is_liquid=None):
+def is_cork(r, g, b, y):
+    """A bottle's cork is warm brown; its glass is always cooler (blue/teal),
+    and the cork only ever sits in the neck near the top of the sprite."""
+    return y <= 4 and r > b
+
+
+def drain_erode(img, fraction, is_liquid=None, corked=False, floor=None):
     """Lower the liquid level by `fraction`, leaving the container untouched.
 
     Vanilla's flat icons never draw anything underneath the liquid fill (no
@@ -1015,36 +1021,50 @@ def drain_erode(img, fraction, is_liquid=None):
     transparent punched a hole straight through to the background. Paint
     the drained area with a darkened shade of the container's own colour
     instead, so it reads as an empty (but solid) bowl/bucket bottom.
+
+    corked=True additionally pops the cork off for good as soon as any
+    drinking starts - you'd uncork a bottle before tipping it back, not
+    partway through - leaving that patch transparent (the open neck).
     """
     px_in = img.load()
-    is_liq = lambda x, y: px_in[x, y][3] and (is_liquid is None or is_liquid(*px_in[x, y][:3]))
+    is_cap = lambda x, y: corked and px_in[x, y][3] and is_cork(*px_in[x, y][:3], y)
+    is_liq = lambda x, y: (px_in[x, y][3] and not is_cap(x, y)
+                           and (is_liquid is None or is_liquid(*px_in[x, y][:3])))
     liquid = [
         (x, y)
         for y in range(img.height)
         for x in range(img.width)
         if is_liq(x, y)
     ]
-    if not liquid:
-        return img
-    container = [
-        px_in[x, y][:3]
+    cap = [
+        (x, y)
         for y in range(img.height)
         for x in range(img.width)
-        if px_in[x, y][3] and not is_liq(x, y)
+        if is_cap(x, y)
     ]
-    if container:
-        floor = tuple(round(sum(c[i] for c in container) / len(container) * 0.55)
-                      for i in range(3))
-    else:
-        floor = (35, 35, 35)
-    top = min(y for _, y in liquid)
-    bottom = max(y for _, y in liquid)
-    cutoff = top + (bottom + 1 - top) * fraction
+    if not liquid and not cap:
+        return img
+    if floor is None:
+        container = [
+            px_in[x, y][:3]
+            for y in range(img.height)
+            for x in range(img.width)
+            if px_in[x, y][3] and not is_liq(x, y) and not is_cap(x, y)
+        ]
+        floor = (tuple(round(sum(c[i] for c in container) / len(container) * 0.55)
+                       for i in range(3))
+                 if container else (35, 35, 35))
     out = img.copy()
     px = out.load()
-    for x, y in liquid:
-        if y < cutoff:
-            px[x, y] = (*floor, 255)
+    for x, y in cap:
+        px[x, y] = (0, 0, 0, 0)
+    if liquid:
+        top = min(y for _, y in liquid)
+        bottom = max(y for _, y in liquid)
+        cutoff = top + (bottom + 1 - top) * fraction
+        for x, y in liquid:
+            if y < cutoff:
+                px[x, y] = (*floor, 255)
     return out
 
 
@@ -1092,13 +1112,17 @@ def eating_animation_solid():
                     food_item_json(f"minecraft:item/{name}", stage_models))
 
 
+CORKED_BOTTLES = {"honey_bottle", "ominous_bottle"}
+
+
 def eating_animation_drain():
     for name in FOOD_DRAIN:
         tex = van(f"textures/item/{name}.png")
         stage_models = []
         for i, frac in enumerate(DRAIN_FRACTIONS):
             write_png(PVP / f"textures/item/food/{name}/{name}{i}.png",
-                      drain_erode(tex, frac, LIQUID_MASK.get(name)))
+                      drain_erode(tex, frac, LIQUID_MASK.get(name),
+                                  corked=name in CORKED_BOTTLES))
             model_id = f"pvp:item/food/{name}/{name}{i}"
             write_json(PVP / f"models/item/food/{name}/{name}{i}.json", {
                 "parent": "minecraft:item/generated",
@@ -1110,18 +1134,34 @@ def eating_animation_drain():
 
 
 def eating_animation_potion():
-    """Potion is two layers (tinted liquid + untinted glass) - only drain the liquid."""
+    """Potion is two layers (tinted liquid + untinted glass) - drain the
+    liquid and pop the cork off the glass layer to match."""
     overlay = van("textures/item/potion_overlay.png")
+    glass = van("textures/item/potion.png")
+
+    # the overlay is a small liquid blob with no glass of its own to sample
+    # a "container" colour from, so borrow the actual glass's light blue -
+    # otherwise the drained patch defaults to a near-black void, visible
+    # through the glass's transparent liquid window.
+    glass_px = glass.load()
+    glass_blue = [glass_px[x, y][:3] for y in range(glass.height) for x in range(glass.width)
+                  if glass_px[x, y][3] and glass_px[x, y][2] > glass_px[x, y][0]]
+    floor = tuple(round(sum(c[i] for c in glass_blue) / len(glass_blue)) for i in range(3))
+
+    uncorked_glass = drain_erode(glass, 1.0, is_liquid=lambda r, g, b: False, corked=True)
+    write_png(PVP / "textures/item/food/potion/potion_glass.png", uncorked_glass)
+
     tints = [{"type": "minecraft:potion", "default": -13083194}]
     stage_models = []
     for i, frac in enumerate(DRAIN_FRACTIONS):
-        write_png(PVP / f"textures/item/food/potion/potion_overlay{i}.png", drain_erode(overlay, frac))
+        write_png(PVP / f"textures/item/food/potion/potion_overlay{i}.png",
+                  drain_erode(overlay, frac, floor=floor))
         model_id = f"pvp:item/food/potion/potion{i}"
         write_json(PVP / f"models/item/food/potion/potion{i}.json", {
             "parent": "minecraft:item/generated",
             "textures": {
                 "layer0": f"pvp:item/food/potion/potion_overlay{i}",
-                "layer1": "minecraft:item/potion",
+                "layer1": "pvp:item/food/potion/potion_glass",
             },
         })
         stage_models.append(model_id)
