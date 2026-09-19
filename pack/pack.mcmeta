@@ -14,12 +14,12 @@
         "color": "gray"
       },
       {
-        "text": "26.2",
+        "text": "26.3",
         "color": "dark_green"
       }
     ],
-    "pack_format": 88,
-    "min_format": 88,
-    "max_format": 88
+    "pack_format": 97,
+    "min_format": 97,
+    "max_format": 97
   }
 }

@@ -16,8 +16,8 @@ from pathlib import Path
 
 from PIL import Image
 
-MC_VERSION = "26.2"
-PACK_FORMAT = 88
+MC_VERSION = "26.3"
+PACK_FORMAT = 97
 
 ROOT = Path(__file__).parent
 CACHE = ROOT / ".cache"
@@ -65,6 +65,13 @@ def write_json(path, data):
 def write_png(path, img):
     path.parent.mkdir(parents=True, exist_ok=True)
     img.save(path)
+
+
+def patch(text, needle, replacement):
+    """Replace one vanilla snippet, loudly failing if the game changed it."""
+    if needle not in text:
+        raise SystemExit(f"vanilla {MC_VERSION} no longer contains: {needle.strip()}")
+    return text.replace(needle, replacement, 1)
 
 
 def copy_vanilla(rel):
@@ -557,6 +564,8 @@ def bobber():
     write_png(MC / "textures/entity/fishing/fishing_hook.png", out)
 
     glsl = (
+        "#ifndef PVP_BOBBER_GLSL\n"
+        "#define PVP_BOBBER_GLSL\n\n"
         "// Bobber pixels are marked with alpha 249/255 so they can be told apart\n"
         "// from every other entity drawn by this shader. The band stays narrow so\n"
         "// genuinely translucent entities are never discarded.\n"
@@ -567,22 +576,23 @@ def bobber():
         "    if (pvp_isBobber(alpha) && dist < cutoff) {\n"
         "        discard;\n"
         "    }\n"
-        "}\n"
+        "}\n\n"
+        "#endif\n"
     )
     (MC / "shaders/include").mkdir(parents=True, exist_ok=True)
     (MC / "shaders/include/pvp_bobber.glsl").write_text(glsl)
 
     fsh = (VANILLA / "shaders/core/entity.fsh").read_text()
-    fsh = fsh.replace(
-        "#moj_import <minecraft:fog.glsl>",
-        "#moj_import <minecraft:fog.glsl>\n#moj_import <minecraft:pvp_bobber.glsl>",
-        1,
+    fsh = patch(
+        fsh,
+        "#include <minecraft:fog.glsl>",
+        "#include <minecraft:fog.glsl>\n#include <minecraft:pvp_bobber.glsl>",
     )
-    fsh = fsh.replace(
+    fsh = patch(
+        fsh,
         "    vec4 color = texture(Sampler0, texCoord0);",
         "    vec4 color = texture(Sampler0, texCoord0);\n"
         f"    pvp_hideCloseBobber(sphericalVertexDistance, {BOBBER_CUTOFF}, color.a);",
-        1,
     )
     (MC / "shaders/core").mkdir(parents=True, exist_ok=True)
     (MC / "shaders/core/entity.fsh").write_text(fsh)
@@ -596,10 +606,12 @@ def fullbright():
     """
     (MC / "shaders/include").mkdir(parents=True, exist_ok=True)
     (MC / "shaders/include/sample_lightmap.glsl").write_text(
-        "#version 330\n\n"
+        "#ifndef MINECRAFT_SAMPLE_LIGHTMAP_GLSL\n"
+        "#define MINECRAFT_SAMPLE_LIGHTMAP_GLSL\n\n"
         "vec4 sample_lightmap(sampler2D lightMap, ivec2 uv) {\n"
         "    return vec4(1.0);\n"
-        "}\n"
+        "}\n\n"
+        "#endif\n"
     )
 
 

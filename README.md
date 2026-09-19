@@ -1,6 +1,6 @@
 # Minecraft PvP Resource Pack
 
-Vanilla-kompatibles Resource Pack für **Minecraft Java 26.2** (pack_format 88).
+Vanilla-kompatibles Resource Pack für **Minecraft Java 26.3** (pack_format 97).
 
 ## Features
 

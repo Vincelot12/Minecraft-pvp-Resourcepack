@@ -1,3 +1,6 @@
+#ifndef PVP_BOBBER_GLSL
+#define PVP_BOBBER_GLSL
+
 // Bobber pixels are marked with alpha 249/255 so they can be told apart
 // from every other entity drawn by this shader. The band stays narrow so
 // genuinely translucent entities are never discarded.
@@ -10,3 +13,5 @@ void pvp_hideCloseBobber(float dist, float cutoff, float alpha) {
         discard;
     }
 }
+
+#endif
