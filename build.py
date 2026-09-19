@@ -8,6 +8,7 @@ so every texture in pack/ is reproducible from source instead of hand-edited.
 import colorsys
 import json
 import math
+import re
 import os
 import shutil
 import urllib.request
@@ -33,6 +34,23 @@ MANIFEST = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 # vanilla assets
 # --------------------------------------------------------------------------
 
+def version_meta():
+    """Mojang's metadata for MC_VERSION, cached so a rebuild stays offline."""
+    cached = CACHE / f"meta-{MC_VERSION}.json"
+    if cached.exists():
+        return json.loads(cached.read_text())
+    CACHE.mkdir(exist_ok=True)
+    with urllib.request.urlopen(MANIFEST) as f:
+        versions = json.load(f)["versions"]
+    entry = next((v for v in versions if v["id"] == MC_VERSION), None)
+    if entry is None:
+        raise SystemExit(f"Mojang does not list a version {MC_VERSION}")
+    with urllib.request.urlopen(entry["url"]) as f:
+        meta = json.load(f)
+    cached.write_text(json.dumps(meta))
+    return meta
+
+
 def fetch_vanilla():
     if VANILLA.exists():
         return
@@ -40,17 +58,31 @@ def fetch_vanilla():
     jar = CACHE / f"client-{MC_VERSION}.jar"
     if not jar.exists():
         print(f"downloading vanilla {MC_VERSION} client jar ...")
-        with urllib.request.urlopen(MANIFEST) as f:
-            versions = json.load(f)["versions"]
-        entry = next(v for v in versions if v["id"] == MC_VERSION)
-        with urllib.request.urlopen(entry["url"]) as f:
-            meta = json.load(f)
-        urllib.request.urlretrieve(meta["downloads"]["client"]["url"], jar)
+        url = version_meta()["downloads"]["client"]["url"]
+        urllib.request.urlretrieve(url, jar)
     print("extracting vanilla assets ...")
     with zipfile.ZipFile(jar) as z:
         for name in z.namelist():
             if name.startswith("assets/minecraft/") and not name.endswith("/"):
                 z.extract(name, CACHE / "vanilla")
+
+
+def vanilla_sounds():
+    """Vanilla's sounds.json - it ships in the asset index, not the client jar.
+
+    Remixing an event means re-declaring it with the very same file list, so
+    the definitions have to come from Mojang rather than be typed out here.
+    """
+    cached = CACHE / f"sounds-{MC_VERSION}.json"
+    if not cached.exists():
+        CACHE.mkdir(exist_ok=True)
+        print("downloading vanilla sounds.json ...")
+        with urllib.request.urlopen(version_meta()["assetIndex"]["url"]) as f:
+            index = json.load(f)["objects"]
+        h = index["minecraft/sounds.json"]["hash"]
+        urllib.request.urlretrieve(
+            f"https://resources.download.minecraft.net/{h[:2]}/{h}", cached)
+    return json.loads(cached.read_text())
 
 
 def van(rel):
@@ -294,28 +326,81 @@ def bordered_ores():
                   border_frame(src, DEBRIS_COLOR, alpha=0.85, textured=True))
 
 
-def louder_hit_sounds():
-    """Boost the crit and sweep hit sounds - vanilla mixes both at 0.7 volume,
-    which makes them easy to miss under other combat noise. Re-declare the
-    same vanilla sound files with a higher volume; the actual .ogg files
-    still resolve from vanilla since this pack ships no audio of its own.
+# Volumes are multipliers on vanilla's own mix, so the balance between the
+# individual files of an event stays intact. Vanilla mixes crit and sweep at
+# 0.7 and the attack thud at 0.6-0.7.
+CRIT_GAIN = 3.0        # loud *and* pitched up, so a crit is unmistakable
+CRIT_PITCH = 1.25
+SWEEP_GAIN = 2.8
+ATTACK_GAIN = 0.35     # the thud of a landed hit, turned down
+MOB_HURT_GAIN = 0.25   # every mob's damage yelp, turned down
+
+ATTACK_EVENTS = [
+    "entity.player.attack.strong",
+    "entity.player.attack.weak",
+    "entity.player.attack.knockback",
+    "entity.player.attack.nodamage",
+]
+
+# Player hurt sounds stay at vanilla volume - hearing the opponent take a hit
+# is information worth keeping, it is the mob chorus that drowns a fight out.
+HURT_KEEP = ("entity.player.", "entity.generic.")
+
+
+def remix(event, definition, gain, pitch=None):
+    """Re-declare a vanilla sound event with the same files at a new mix.
+
+    The .ogg files themselves are never shipped - naming them here is enough
+    for the game to fall back to its own audio and only take the new volume.
     """
-    write_json(MC / "sounds.json", {
-        "entity.player.attack.crit": {
-            "subtitle": "subtitles.entity.player.attack.crit",
-            "sounds": [
-                {"name": f"entity/player/attack/crit{n}", "volume": 1.4}
-                for n in (1, 2, 3)
-            ],
-        },
-        "entity.player.attack.sweep": {
-            "subtitle": "subtitles.entity.player.attack.sweep",
-            "sounds": [
-                {"name": f"entity/player/attack/sweep{n}", "volume": 1.1}
-                for n in range(1, 8)
-            ],
-        },
-    })
+    out = []
+    for sound in definition["sounds"]:
+        if isinstance(sound, str):
+            sound = {"name": sound}
+        else:
+            sound = dict(sound)
+        sound["volume"] = round(sound.get("volume", 1.0) * gain, 3)
+        if pitch is not None:
+            sound["pitch"] = round(sound.get("pitch", 1.0) * pitch, 3)
+        out.append(sound)
+    entry = {"sounds": out}
+    if "subtitle" in definition:
+        entry["subtitle"] = definition["subtitle"]
+    return entry
+
+
+def combat_sounds():
+    """Push crit and sweep to the front of the mix, push the rest back.
+
+    A crit also comes out a quarter higher in pitch, so it is told apart from
+    a normal hit by ear instead of by volume alone.
+    """
+    vanilla = vanilla_sounds()
+    out = {}
+
+    out["entity.player.attack.crit"] = remix(
+        "entity.player.attack.crit", vanilla["entity.player.attack.crit"],
+        CRIT_GAIN, CRIT_PITCH)
+    out["entity.player.attack.sweep"] = remix(
+        "entity.player.attack.sweep", vanilla["entity.player.attack.sweep"],
+        SWEEP_GAIN)
+
+    for event in ATTACK_EVENTS:
+        out[event] = remix(event, vanilla[event], ATTACK_GAIN)
+
+    quiet = 0
+    for event, definition in vanilla.items():
+        if not re.match(r"entity\.[a-z_]+\.hurt", event):
+            continue
+        if event.startswith(HURT_KEEP):
+            continue
+        out[event] = remix(event, definition, MOB_HURT_GAIN)
+        quiet += 1
+
+    write_json(MC / "sounds.json", out)
+    print(f"  sounds: crit x{CRIT_GAIN} @ pitch {CRIT_PITCH}, "
+          f"sweep x{SWEEP_GAIN}, attack x{ATTACK_GAIN}, "
+          f"{quiet} mob hurt events x{MOB_HURT_GAIN}")
 
 
 def low_shield():
@@ -626,7 +711,7 @@ def no_pumpkin_blur():
 PARTICLE_ALPHA = {
     "critical_hit": 0.0,
     "enchanted_hit": 0.0,
-    "damage": 0.3,
+    "damage": 0.0,                               # heart-shaped damage indicator
     "flash": 0.0,                                # crystal/TNT detonation flash
     **{f"sweep_{i}": 0.0 for i in range(8)},
     **{f"glitter_{i}": 0.2 for i in range(8)},   # totem of undying
@@ -1312,7 +1397,7 @@ def main():
     low_fire()
     outlined_cobweb()
     bordered_ores()
-    louder_hit_sounds()
+    combat_sounds()
     low_shield()
     shield_cooldown()
     bow_gradient()

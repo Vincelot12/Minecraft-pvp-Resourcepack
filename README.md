@@ -7,14 +7,14 @@ Vanilla-kompatibles Resource Pack für **Minecraft Java 26.3** (pack_format 97).
 **Sicht**
 - **Fullbright** – alles voll ausgeleuchtet, keine dunklen Höhlen
 - **Low Fire** – Feuer nur noch als schmaler Streifen am unteren Bildschirmrand
-- **Weniger Partikel** – Crit-, Sweep-, Explosions-, Flash- und Rauchpartikel unsichtbar, Totem- und Trankpartikel gedimmt
+- **Weniger Partikel** – Crit-, Sweep-, Schadens-Herzen, Explosions-, Flash- und Rauchpartikel unsichtbar, Totem- und Trankpartikel gedimmt
 - Kein Kürbis-Blur, keine Vignette, dezenter Verzauberungs-Glanz
 - Angel-Schwimmer verschwindet, wenn er dir direkt ins Gesicht geworfen wird
 
 **Kampf**
 - **Schild** sitzt tiefer, färbt sich rot, wenn eine Axt es deaktiviert, und verblasst mit dem Cooldown
 - **Bogen** – der eingelegte Pfeil färbt sich beim Spannen von Rot nach Grün (grün = voll geladen)
-- Lautere Crit- und Sweep-Sounds
+- **Sound-Mix fürs Gehör** – Crit dreifach laut und eine große Terz höher gepitcht (hörbar anders als ein normaler Treffer), Sweep fast dreifach laut; der Treffer-Thud auf ein Drittel und die Schadenslaute *aller* Mobs auf ein Viertel heruntergezogen. Spieler-Schadenslaute bleiben auf Vanilla-Lautstärke.
 
 **Blöcke**
 - **Erz-Rahmen** in der Farbe des jeweiligen Minerals (Kohle schwarz, Ancient Debris bronze)
